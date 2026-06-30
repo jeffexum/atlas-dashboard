@@ -1,8 +1,8 @@
 // server/agents.ts — Four AI agents using @anthropic-ai/sdk
 
 import Anthropic from '@anthropic-ai/sdk';
-import type { ServerState } from './state';
-import * as state from './state';
+import type { ServerState } from './state.js';
+import * as state from './state.js';
 
 export interface AppliedAction {
   tool: string;

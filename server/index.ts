@@ -3,9 +3,9 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import { getState, setState } from './state';
-import { runAgent } from './agents';
-import { createTelegramBot, activeChatIds, sendMorningBriefing, sendHabitReminder } from './telegram';
+import { getState, setState } from './state.js';
+import { runAgent } from './agents.js';
+import { createTelegramBot, activeChatIds, sendMorningBriefing, sendHabitReminder } from './telegram.js';
 
 const app = express();
 const PORT = parseInt(process.env.PORT || '3001', 10);
@@ -26,7 +26,7 @@ function broadcastState() {
 }
 
 // Broadcast on state changes
-import { subscribe } from './state';
+import { subscribe } from './state.js';
 subscribe(() => broadcastState());
 
 // ── Routes ───────────────────────────────────────────────────────────────────

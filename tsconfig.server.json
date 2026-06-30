@@ -3,10 +3,9 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": ".",
-    "module": "commonjs",
-    "moduleResolution": "node10",
-    "ignoreDeprecations": "6.0",
-    "target": "es2020",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "es2022",
     "esModuleInterop": true,
     "skipLibCheck": true
   },

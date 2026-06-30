@@ -1,8 +1,8 @@
 // server/telegram.ts — Telegram bot in webhook mode
 
 import TelegramBot from 'node-telegram-bot-api';
-import { runAgent } from './agents';
-import { getState } from './state';
+import { runAgent } from './agents.js';
+import { getState } from './state.js';
 
 export const activeChatIds = new Set<number>();
 

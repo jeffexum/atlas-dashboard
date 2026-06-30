@@ -1,0 +1,22 @@
+:root {
+  --bg: #DEE3E9;
+  --card: #FFFFFF;
+  --ink: #15191F;
+  --ink2: #2B323C;
+  --mut: #69727E;
+  --faint: #98A1AD;
+  --line: #CBD2DA;
+  --line2: #DDE2E8;
+  --accent: oklch(0.55 0.13 162);
+  --accentbg: oklch(0.94 0.045 162);
+  --blue: oklch(0.58 0.12 245);
+  --warm: oklch(0.55 0.07 255);
+  --violet: oklch(0.5 0.09 262);
+  --ringbg: #D4DAE1;
+  --p1: oklch(0.58 0.2 27);
+  --p2: oklch(0.76 0.15 75);
+  --p3: #98A1AD;
+  --radius-card: 4px;
+  --radius-chip: 3px;
+  --shadow-card: 0 2px 4px rgba(21,25,31,.07);
+}

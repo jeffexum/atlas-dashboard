@@ -14,7 +14,15 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: FRONTEND_URL
-        value: https://atlas-dashboard.onrender.com
+        value: https://atlas-dashboard-t8rh.onrender.com
+      - key: MICROSOFT_CLIENT_ID
+        value: 677e4d60-4fe6-4a09-971d-71f96f954759
+      - key: MICROSOFT_TENANT_ID
+        value: 1c1424b3-9780-4da3-85d1-9c818609d74a
+      - key: MICROSOFT_REDIRECT_URI
+        value: https://atlas-api-fdlq.onrender.com/api/outlook/callback
+      - key: MICROSOFT_CLIENT_SECRET
+        sync: false
 
   - type: web
     name: atlas-dashboard

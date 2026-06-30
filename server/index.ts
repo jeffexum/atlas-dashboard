@@ -5,6 +5,7 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { getState, setState } from './state.js';
 import { runAgent } from './agents.js';
+import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated } from './outlook.js';
 import { createTelegramBot, activeChatIds, sendMorningBriefing, sendHabitReminder } from './telegram.js';
 
 const app = express();
@@ -74,6 +75,52 @@ app.get('/api/events', (req: Request, res: Response) => {
     clearInterval(heartbeat);
     sseClients.delete(res);
   });
+});
+
+// ── Outlook / Microsoft Graph ─────────────────────────────────────────────────
+
+app.get('/api/outlook/auth', (_req: Request, res: Response) => {
+  if (!process.env.MICROSOFT_CLIENT_ID) {
+    res.status(503).json({ error: 'Outlook integration not configured' });
+    return;
+  }
+  res.redirect(getAuthUrl());
+});
+
+app.get('/api/outlook/callback', async (req: Request, res: Response) => {
+  const code = req.query.code as string;
+  if (!code) {
+    res.status(400).send('Missing authorization code');
+    return;
+  }
+  try {
+    await exchangeCode(code);
+    await syncMail();
+    await syncCalendar();
+    res.redirect(`${FRONTEND_URL}?outlook=connected`);
+  } catch (err) {
+    console.error('Outlook OAuth error:', err);
+    res.status(500).send('OAuth failed: ' + (err as Error).message);
+  }
+});
+
+app.get('/api/outlook/sync', async (_req: Request, res: Response) => {
+  if (!isAuthenticated()) {
+    res.status(401).json({ error: 'Not authenticated', authUrl: '/api/outlook/auth' });
+    return;
+  }
+  try {
+    await syncMail();
+    await syncCalendar();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Outlook sync error:', err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.get('/api/outlook/status', (_req: Request, res: Response) => {
+  res.json({ authenticated: isAuthenticated() });
 });
 
 // ── Telegram webhook ─────────────────────────────────────────────────────────

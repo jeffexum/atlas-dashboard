@@ -16,17 +16,14 @@ services:
       - key: FRONTEND_URL
         value: https://atlas-dashboard.onrender.com
 
-  - type: static
+  - type: web
     name: atlas-dashboard
+    env: static
     buildCommand: npm run build
     staticPublishPath: ./dist
     envVars:
       - key: VITE_API_URL
         value: https://atlas-api.onrender.com
-    headers:
-      - path: /*
-        name: Cache-Control
-        value: no-cache
     routes:
       - type: rewrite
         source: /*

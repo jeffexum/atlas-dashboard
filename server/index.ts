@@ -61,14 +61,10 @@ app.delete('/api/tasks/:id', async (req: Request, res: Response) => {
 });
 
 app.post('/api/ask', async (req: Request, res: Response) => {
-  const { message, agentHint, state: clientState } = req.body;
+  const { message, agentHint } = req.body;
   if (!message) {
     res.status(400).json({ error: 'message is required' });
     return;
-  }
-  // Merge client state if provided
-  if (clientState) {
-    setState(clientState);
   }
   const result = await runAgent({ message, agentHint, state: getState() });
   res.json(result);

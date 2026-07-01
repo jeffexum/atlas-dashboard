@@ -138,7 +138,7 @@ app.get('/api/outlook/callback', async (req: Request, res: Response) => {
 app.get('/api/comms/:id/body', async (req: Request, res: Response) => {
   if (!isAuthenticated()) { res.status(401).json({ error: 'Not authenticated' }); return; }
   try {
-    const body = await fetchEmailBody(req.params.id);
+    const body = await fetchEmailBody(req.params.id as string);
     res.json({ body });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });

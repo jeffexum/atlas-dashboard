@@ -64,7 +64,7 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
     if (bodyCache[commId]) return;
     setLoadingBody(commId);
     try {
-      const res = await fetch(`${API_URL}/api/comms/${commId}/body`);
+      const res = await fetch(`${API_URL}/api/comms/${encodeURIComponent(commId)}/body`);
       const data = await res.json() as { body?: string };
       setBodyCache((prev) => ({ ...prev, [commId]: data.body || '(no body)' }));
     } catch {

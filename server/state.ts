@@ -246,6 +246,10 @@ export async function persistNow(): Promise<void> {
 
 export async function loadPersistedState(): Promise<void> {
   try {
+    // Raw debug read so we can see exactly what Redis returns for tasks
+    const rawTasksRes = await redisFetch(`/get/${KEYS.tasks}`) as { result: unknown } | null;
+    console.log('Redis atlas:tasks raw result type:', typeof rawTasksRes?.result, '| value:', JSON.stringify(rawTasksRes?.result)?.slice(0, 200));
+
     const [
       tasks, comms, drafts, proposedActions, habits, goals, books,
       highlights, ideas, journalEntries, calEvents, calNote,

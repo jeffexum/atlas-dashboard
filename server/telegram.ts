@@ -90,29 +90,14 @@ export function createTelegramBot(webhookUrl: string): TelegramBot {
       return;
     }
 
-    if (text === '/adler' || text.toLowerCase().startsWith('adler,') || text.toLowerCase().startsWith('hey adler')) {
-      try {
-        await bot.sendChatAction(chatId, 'typing');
-        const message = text.replace(/^\/adler\s*/i, '').replace(/^(adler,|hey adler)[,\s]*/i, '').trim() || 'How are things looking?';
-        const reply = await runAdler(message);
-        await bot.sendMessage(chatId, `🧠 *Adler*\n\n${reply}`, { parse_mode: 'Markdown' });
-      } catch (err) {
-        console.error('Adler error:', err);
-        await bot.sendMessage(chatId, 'Adler ran into an issue. Try again.');
-      }
-      return;
-    }
-
-    // Any other text — run the AI agent
+    // All free-text goes to Adler — he's the primary interface
     try {
       await bot.sendChatAction(chatId, 'typing');
-      const result = await runAgent({ message: text, state: getState() });
-      const emoji = AGENT_EMOJIS[result.agent] || '🤖';
-      const agentName = result.agent.charAt(0).toUpperCase() + result.agent.slice(1);
-      await bot.sendMessage(chatId, `${emoji} *${agentName}*\n\n${result.text}`, { parse_mode: 'Markdown' });
+      const reply = await runAdler(text);
+      await bot.sendMessage(chatId, reply, { parse_mode: 'Markdown' });
     } catch (err) {
-      console.error('Telegram agent error:', err);
-      await bot.sendMessage(chatId, 'Sorry, something went wrong. Please try again.');
+      console.error('Adler error:', err);
+      await bot.sendMessage(chatId, 'Something went wrong. Try again.');
     }
   });
 

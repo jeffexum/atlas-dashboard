@@ -15,8 +15,34 @@ interface TokenData {
   expires_at: number; // ms timestamp
 }
 
-// In-memory token store (survives restarts only via re-auth)
+// Token store — persisted to Redis so auth survives restarts
 let tokenData: TokenData | null = null;
+
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL || process.env.UPSTASH_REDIS_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.UPSTASH_REDIS_TOKEN;
+const TOKEN_KEY = 'atlas:outlookToken';
+
+async function saveToken(t: TokenData): Promise<void> {
+  if (!REDIS_URL || !REDIS_TOKEN) return;
+  await fetch(`${REDIS_URL}/set/${TOKEN_KEY}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(JSON.stringify(t)),
+  });
+}
+
+async function loadToken(): Promise<void> {
+  if (!REDIS_URL || !REDIS_TOKEN) return;
+  try {
+    const res = await fetch(`${REDIS_URL}/get/${TOKEN_KEY}`, {
+      headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
+    });
+    const json = await res.json() as { result: string | null };
+    if (json.result) tokenData = JSON.parse(json.result) as TokenData;
+  } catch { /* ignore */ }
+}
+
+export { loadToken as loadOutlookToken };
 
 export function getAuthUrl(): string {
   const params = new URLSearchParams({
@@ -52,6 +78,7 @@ export async function exchangeCode(code: string): Promise<void> {
     refresh_token: data.refresh_token || '',
     expires_at: Date.now() + (data.expires_in || 3600) * 1000,
   };
+  await saveToken(tokenData);
 }
 
 async function refreshAccessToken(): Promise<void> {
@@ -79,6 +106,7 @@ async function refreshAccessToken(): Promise<void> {
     refresh_token: data.refresh_token || tokenData.refresh_token,
     expires_at: Date.now() + (data.expires_in || 3600) * 1000,
   };
+  await saveToken(tokenData);
 }
 
 async function getAccessToken(): Promise<string> {

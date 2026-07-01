@@ -6,7 +6,7 @@ import cors from 'cors';
 import { getState, setState, persistNow } from './state.js';
 import { runAgent } from './agents.js';
 import { adlerProactiveCheck, generateBriefing } from './adler.js';
-import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated } from './outlook.js';
+import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken } from './outlook.js';
 import { createTelegramBot, activeChatIds, sendMorningBriefing, sendHabitReminder } from './telegram.js';
 
 const app = express();
@@ -214,6 +214,7 @@ setInterval(() => {
 import { loadPersistedState, migrateLegacyState } from './state.js';
 loadPersistedState()
   .then(() => migrateLegacyState())
+  .then(() => loadOutlookToken())
   .then(() => generateBriefing())
   .catch(() => {});
 

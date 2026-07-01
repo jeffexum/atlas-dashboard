@@ -305,11 +305,32 @@ export async function migrateLegacyState(): Promise<void> {
   try {
     const legacy = await redisGet<Partial<ServerState>>('atlas:state');
     if (!legacy || typeof legacy !== 'object') return;
-    if (!Array.isArray((legacy as ServerState).tasks)) return;
-    const s = legacy as ServerState;
+    const s = legacy as Partial<ServerState>;
+    if (!Array.isArray(s.tasks)) return;
     // Only migrate if current state is empty (fresh instance)
     if (_state.tasks.length > 0) return;
-    _state = { ..._state, ...s };
+    // Null-safe merge: only overwrite fields that are valid in the old blob
+    _state = {
+      ..._state,
+      tasks: Array.isArray(s.tasks) ? s.tasks : _state.tasks,
+      comms: Array.isArray(s.comms) ? s.comms : _state.comms,
+      drafts: Array.isArray(s.drafts) ? s.drafts : _state.drafts,
+      proposedActions: Array.isArray(s.proposedActions) ? s.proposedActions : _state.proposedActions,
+      habits: Array.isArray(s.habits) ? s.habits : _state.habits,
+      goals: Array.isArray(s.goals) ? s.goals : _state.goals,
+      books: Array.isArray(s.books) ? s.books : _state.books,
+      highlights: Array.isArray(s.highlights) ? s.highlights : _state.highlights,
+      ideas: Array.isArray(s.ideas) ? s.ideas : _state.ideas,
+      journalEntries: Array.isArray(s.journalEntries) ? s.journalEntries : _state.journalEntries,
+      calEvents: Array.isArray(s.calEvents) ? s.calEvents : _state.calEvents,
+      calNote: typeof s.calNote === 'string' ? s.calNote : _state.calNote,
+      adlerNotes: (s.adlerNotes && typeof s.adlerNotes === 'object' && !Array.isArray(s.adlerNotes)) ? s.adlerNotes : _state.adlerNotes,
+      adlerMemory: Array.isArray(s.adlerMemory) ? s.adlerMemory : _state.adlerMemory,
+      adlerLastContact: typeof s.adlerLastContact === 'number' ? s.adlerLastContact : _state.adlerLastContact,
+      briefingText: typeof s.briefingText === 'string' ? s.briefingText : _state.briefingText,
+      briefingNudges: Array.isArray(s.briefingNudges) ? s.briefingNudges : _state.briefingNudges,
+      briefingGeneratedAt: typeof s.briefingGeneratedAt === 'number' ? s.briefingGeneratedAt : _state.briefingGeneratedAt,
+    };
     await persistNow(); // write to new per-key format
     console.log(`Migrated legacy state: ${_state.tasks.length} tasks`);
   } catch {

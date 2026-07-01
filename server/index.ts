@@ -6,7 +6,7 @@ import cors from 'cors';
 import { getState, setState, persistNow } from './state.js';
 import { runAgent } from './agents.js';
 import { adlerProactiveCheck, generateBriefing } from './adler.js';
-import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail } from './outlook.js';
+import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, fetchEmailBody } from './outlook.js';
 import { createTelegramBot, activeChatIds, sendMorningBriefing, sendHabitReminder } from './telegram.js';
 
 const app = express();
@@ -132,6 +132,16 @@ app.get('/api/outlook/callback', async (req: Request, res: Response) => {
   } catch (err) {
     console.error('Outlook OAuth error:', err);
     res.status(500).send('OAuth failed: ' + (err as Error).message);
+  }
+});
+
+app.get('/api/comms/:id/body', async (req: Request, res: Response) => {
+  if (!isAuthenticated()) { res.status(401).json({ error: 'Not authenticated' }); return; }
+  try {
+    const body = await fetchEmailBody(req.params.id);
+    res.json({ body });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
   }
 });
 

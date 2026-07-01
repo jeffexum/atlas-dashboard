@@ -266,6 +266,24 @@ function fmtRelative(iso?: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+export async function fetchEmailBody(messageId: string): Promise<string> {
+  const data = await graphGet(`/me/messages/${messageId}?$select=body`) as { body?: { content?: string; contentType?: string } };
+  const raw = data.body?.content || '';
+  if (data.body?.contentType === 'html') {
+    return raw
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/\s{2,}/g, '\n')
+      .trim();
+  }
+  return raw.trim();
+}
+
 export async function syncMail(): Promise<void> {
   const data = await graphGet('/me/mailFolders/inbox/messages?$top=20&$orderby=receivedDateTime%20desc&$select=id,subject,from,receivedDateTime,bodyPreview,isRead,inferenceClassification') as { value: GraphMessage[] };
 

@@ -54,6 +54,25 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
 
   const [syncing, setSyncing] = useState(false);
   const [learning, setLearning] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [bodyCache, setBodyCache] = useState<Record<string, string>>({});
+  const [loadingBody, setLoadingBody] = useState<string | null>(null);
+
+  async function handleExpandComm(commId: string) {
+    if (expandedId === commId) { setExpandedId(null); return; }
+    setExpandedId(commId);
+    if (bodyCache[commId]) return;
+    setLoadingBody(commId);
+    try {
+      const res = await fetch(`${API_URL}/api/comms/${commId}/body`);
+      const data = await res.json() as { body?: string };
+      setBodyCache((prev) => ({ ...prev, [commId]: data.body || '(no body)' }));
+    } catch {
+      setBodyCache((prev) => ({ ...prev, [commId]: '(failed to load)' }));
+    } finally {
+      setLoadingBody(null);
+    }
+  }
   const userProfile = useStore((s) => s.userProfile);
   const [draftedId, setDraftedId] = useState<string | null>(null);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
@@ -198,7 +217,10 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
                 overflow: 'hidden',
               }}
             >
-              <div style={{ padding: '10px 12px' }}>
+              <div
+                style={{ padding: '10px 12px', cursor: 'pointer' }}
+                onClick={() => handleExpandComm(comm.id)}
+              >
                 {/* Top row */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
                   <span
@@ -217,16 +239,33 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
                   </span>
                   <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--ink)', flex: 1 }}>{comm.who}</span>
                   <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: 'var(--faint)' }}>{comm.time}</span>
+                  <span style={{ fontSize: '11px', color: 'var(--faint)' }}>{expandedId === comm.id ? '▲' : '▼'}</span>
                 </div>
 
                 {/* Subject */}
                 <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--ink)', marginTop: '4px' }}>{comm.subject}</div>
 
-                {/* Preview */}
-                <div style={{ fontSize: '12px', color: 'var(--mut)', marginTop: '2px' }}>{comm.preview}</div>
+                {/* Preview or full body */}
+                {expandedId === comm.id ? (
+                  <div style={{
+                    fontSize: '12.5px',
+                    color: 'var(--ink2)',
+                    marginTop: '8px',
+                    whiteSpace: 'pre-wrap',
+                    lineHeight: 1.6,
+                    maxHeight: '400px',
+                    overflowY: 'auto',
+                    borderTop: '1px solid var(--line2)',
+                    paddingTop: '8px',
+                  }}>
+                    {loadingBody === comm.id ? 'Loading…' : (bodyCache[comm.id] || comm.preview)}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: '12px', color: 'var(--mut)', marginTop: '2px' }}>{comm.preview}</div>
+                )}
 
                 {/* Actions */}
-                <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }}>
+                <div style={{ display: 'flex', gap: '6px', marginTop: '8px' }} onClick={(e) => e.stopPropagation()}>
                   <button
                     style={{
                       ...smallBtn,

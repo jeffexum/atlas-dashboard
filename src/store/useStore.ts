@@ -446,12 +446,31 @@ export async function syncStateToServer() {
   }).catch(() => {})
 }
 
+function sanitizeServerState(s: Record<string, unknown>) {
+  const arr = (v: unknown, fallback: unknown[] = []) => Array.isArray(v) ? v : fallback;
+  return {
+    ...s,
+    tasks: arr(s.tasks),
+    comms: arr(s.comms),
+    drafts: arr(s.drafts),
+    proposedActions: arr(s.proposedActions),
+    habits: arr(s.habits),
+    goals: arr(s.goals),
+    books: arr(s.books),
+    highlights: arr(s.highlights),
+    ideas: arr(s.ideas),
+    journalEntries: arr(s.journalEntries),
+    calEvents: arr(s.calEvents),
+    briefingNudges: arr(s.briefingNudges),
+  };
+}
+
 export async function initFromServer() {
   try {
     const res = await fetch(`${API_URL}/api/state`)
     if (!res.ok) return
     const serverState = await res.json()
-    useStore.setState(serverState)
+    useStore.setState(sanitizeServerState(serverState))
   } catch {}
 }
 
@@ -460,7 +479,7 @@ export function subscribeToServerEvents() {
   es.onmessage = (e) => {
     try {
       const serverState = JSON.parse(e.data)
-      useStore.setState(serverState)
+      useStore.setState(sanitizeServerState(serverState))
     } catch {}
   }
   return () => es.close()

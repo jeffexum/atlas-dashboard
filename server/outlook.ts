@@ -165,7 +165,10 @@ function fmtRelative(iso?: string): string {
 export async function syncMail(): Promise<void> {
   const data = await graphGet('/me/mailFolders/inbox/messages?$top=20&$orderby=receivedDateTime%20desc&$select=id,subject,from,receivedDateTime,bodyPreview,isRead,inferenceClassification') as { value: GraphMessage[] };
 
-  const messages = data.value || [];
+  const all = data.value || [];
+  // If any message has inferenceClassification set, filter to focused only
+  const hasFocused = all.some((m) => m.inferenceClassification === 'focused');
+  const messages = hasFocused ? all.filter((m) => m.inferenceClassification === 'focused') : all;
 
   const priorities = ['p1', 'p2', 'p3'] as const;
 

@@ -11,6 +11,8 @@ services:
         value: production
       - key: TELEGRAM_BOT_TOKEN
         sync: false
+      - key: WEBHOOK_URL
+        value: https://atlas-api-fdlq.onrender.com
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: FRONTEND_URL

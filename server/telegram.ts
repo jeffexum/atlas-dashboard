@@ -2,6 +2,7 @@
 
 import TelegramBot from 'node-telegram-bot-api';
 import { runAgent } from './agents.js';
+import { runAdler } from './adler.js';
 import { getState } from './state.js';
 
 export const activeChatIds = new Set<number>();
@@ -31,7 +32,7 @@ export function createTelegramBot(webhookUrl: string): TelegramBot {
     if (text === '/start') {
       await bot.sendMessage(
         chatId,
-        `👋 *Welcome to Atlas!*\n\nI'm your personal life dashboard assistant.\n\nCommands:\n/tasks — Today's tasks\n/inbox — Inbox summary\n/habits — Habit streaks\n/goals — Goal progress\n/briefing — Full morning briefing\n\nOr just type anything to ask me!`,
+        `👋 *Welcome to Atlas!*\n\nCommands:\n/tasks — Today's tasks\n/inbox — Inbox summary\n/habits — Habit streaks\n/goals — Goal progress\n/briefing — Full morning briefing\n/adler — Talk to your personal coach\n\nOr just type anything. Say "Adler, ..." to reach your coach directly.`,
         { parse_mode: 'Markdown' }
       );
       return;
@@ -86,6 +87,19 @@ export function createTelegramBot(webhookUrl: string): TelegramBot {
 
     if (text === '/briefing') {
       await sendMorningBriefing(bot, chatId);
+      return;
+    }
+
+    if (text === '/adler' || text.toLowerCase().startsWith('adler,') || text.toLowerCase().startsWith('hey adler')) {
+      try {
+        await bot.sendChatAction(chatId, 'typing');
+        const message = text.replace(/^\/adler\s*/i, '').replace(/^(adler,|hey adler)[,\s]*/i, '').trim() || 'How are things looking?';
+        const reply = await runAdler(message);
+        await bot.sendMessage(chatId, `🧠 *Adler*\n\n${reply}`, { parse_mode: 'Markdown' });
+      } catch (err) {
+        console.error('Adler error:', err);
+        await bot.sendMessage(chatId, 'Adler ran into an issue. Try again.');
+      }
       return;
     }
 

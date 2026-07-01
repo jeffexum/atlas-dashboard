@@ -102,6 +102,12 @@ export interface CalEvent {
   date: number;
 }
 
+export interface AdlerMessage {
+  role: 'user' | 'adler';
+  content: string;
+  ts: number;
+}
+
 export interface ServerState {
   tasks: Task[];
   comms: Comm[];
@@ -115,6 +121,9 @@ export interface ServerState {
   journalEntries: JournalEntry[];
   calEvents: CalEvent[];
   calNote: string;
+  adlerMemory: AdlerMessage[];
+  adlerNotes: string;
+  adlerLastContact: number;
 }
 
 function makeHeatmap(rate: number, name: string): boolean[] {
@@ -224,6 +233,9 @@ const seedState: ServerState = {
     { id: 'ce5', title: 'Gym', start: 17.5, duration: 1, color: 'var(--accent)', category: 'Health', date: 29 },
   ],
   calNote: 'Prep Q2 talking points before 3pm\nSend budget sign-off to Mark\nBlock time for blog post this week',
+  adlerMemory: [],
+  adlerNotes: '',
+  adlerLastContact: 0,
 };
 
 // Deep clone seed so we can reset if needed

@@ -5,6 +5,7 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { getState, setState } from './state.js';
 import { runAgent } from './agents.js';
+import { adlerProactiveCheck } from './adler.js';
 import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated } from './outlook.js';
 import { createTelegramBot, activeChatIds, sendMorningBriefing, sendHabitReminder } from './telegram.js';
 
@@ -161,21 +162,28 @@ if (TELEGRAM_TOKEN && WEBHOOK_BASE) {
   console.log('Telegram not configured (missing TELEGRAM_BOT_TOKEN or WEBHOOK_URL)');
 }
 
-// ── Scheduled tasks ──────────────────────────────────────────────────────────
+// ── Adler proactive check (every 10 min, Adler decides whether to reach out) ─
+
+setInterval(async () => {
+  if (!bot || activeChatIds.size === 0) return;
+  try {
+    const message = await adlerProactiveCheck();
+    if (message) {
+      activeChatIds.forEach((chatId) => {
+        bot!.sendMessage(chatId, `🧠 *Adler*\n\n${message}`, { parse_mode: 'Markdown' });
+      });
+    }
+  } catch (err) {
+    console.error('Adler proactive check error:', err);
+  }
+}, 10 * 60_000);
+
+// ── Morning briefing at 7am ───────────────────────────────────────────────────
 
 setInterval(() => {
   const now = new Date();
-  const hour = now.getHours();
-  const minute = now.getMinutes();
-
-  // Morning briefing at 7:00am
-  if (hour === 7 && minute === 0 && bot) {
+  if (now.getHours() === 7 && now.getMinutes() === 0 && bot) {
     activeChatIds.forEach((chatId) => sendMorningBriefing(bot!, chatId));
-  }
-
-  // Habit reminder at 8:00pm
-  if (hour === 20 && minute === 0 && bot) {
-    activeChatIds.forEach((chatId) => sendHabitReminder(bot!, chatId));
   }
 }, 60_000);
 

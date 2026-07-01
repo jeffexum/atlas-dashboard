@@ -269,16 +269,19 @@ let _persistTimer: ReturnType<typeof setTimeout> | null = null;
 
 function schedulePersist(): void {
   if (_persistTimer) clearTimeout(_persistTimer);
-  _persistTimer = setTimeout(async () => {
-    try {
-      await redisFetch(`/set/${STATE_KEY}`, {
-        method: 'POST',
-        body: JSON.stringify(JSON.stringify(_state)),
-      });
-    } catch (err) {
-      console.error('State persist error:', err);
-    }
-  }, 500); // debounce — batch rapid updates
+  _persistTimer = setTimeout(() => persistNow(), 500);
+}
+
+export async function persistNow(): Promise<void> {
+  if (_persistTimer) { clearTimeout(_persistTimer); _persistTimer = null; }
+  try {
+    await redisFetch(`/set/${STATE_KEY}`, {
+      method: 'POST',
+      body: JSON.stringify(JSON.stringify(_state)),
+    });
+  } catch (err) {
+    console.error('State persist error:', err);
+  }
 }
 
 export async function loadPersistedState(): Promise<void> {

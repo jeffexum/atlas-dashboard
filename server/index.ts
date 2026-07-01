@@ -3,7 +3,7 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import { getState, setState } from './state.js';
+import { getState, setState, persistNow } from './state.js';
 import { runAgent } from './agents.js';
 import { adlerProactiveCheck, generateBriefing } from './adler.js';
 import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated } from './outlook.js';
@@ -42,19 +42,21 @@ app.post('/api/state', (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
-app.patch('/api/tasks/:id', (req: Request, res: Response) => {
+app.patch('/api/tasks/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   const s = getState();
   const tasks = s.tasks.map((t) => t.id === id ? { ...t, ...req.body } : t);
   setState({ tasks });
+  await persistNow();
   res.json({ ok: true });
 });
 
-app.delete('/api/tasks/:id', (req: Request, res: Response) => {
+app.delete('/api/tasks/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   const s = getState();
   const tasks = s.tasks.filter((t) => t.id !== id);
   setState({ tasks });
+  await persistNow();
   res.json({ ok: true });
 });
 

@@ -193,6 +193,37 @@ async function graphGet(path: string): Promise<unknown> {
   return res.json();
 }
 
+async function graphPost(path: string, body: unknown): Promise<void> {
+  const token = await getAccessToken();
+  const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Graph API POST ${path} returned ${res.status}: ${err}`);
+  }
+}
+
+export async function sendEmail(to: string, subject: string, body: string): Promise<void> {
+  // to is a display name — look up the real address from comms
+  const { getState } = await import('./state.js');
+  const comms = getState().comms as (ReturnType<typeof getState>['comms'][number] & { email?: string })[];
+  const comm = comms.find((c) => c.who === to || c.subject === subject);
+  const toAddress = comm?.email || (to.includes('@') ? to : '');
+  if (!toAddress) throw new Error(`Cannot resolve email address for "${to}" — sync inbox first`);
+
+  await graphPost('/me/sendMail', {
+    message: {
+      subject: subject ? `Re: ${subject}` : '(no subject)',
+      body: { contentType: 'Text', content: body },
+      toRecipients: [{ emailAddress: { address: toAddress } }],
+    },
+    saveToSentItems: true,
+  });
+}
+
 interface GraphMessageFull {
   id: string;
   subject?: string;
@@ -249,6 +280,7 @@ export async function syncMail(): Promise<void> {
     id: msg.id,
     source: 'email' as const,
     who: msg.from?.emailAddress?.name || msg.from?.emailAddress?.address || 'Unknown',
+    email: msg.from?.emailAddress?.address || '',
     subject: msg.subject || '(no subject)',
     preview: msg.bodyPreview?.slice(0, 120) || '',
     time: fmtRelative(msg.receivedDateTime),

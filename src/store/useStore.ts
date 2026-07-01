@@ -203,10 +203,31 @@ export const useStore = create<StoreState>((set) => ({
       ),
     })),
 
-  sendDraft: (id) =>
+  sendDraft: (id) => {
+    // Optimistically mark sent; server call will confirm or we revert on error
     set((state) => ({
       drafts: state.drafts.map((d) => (d.id === id ? { ...d, status: 'sent' } : d)),
-    })),
+    }));
+    const API = import.meta.env.VITE_API_URL || '';
+    fetch(`${API}/api/drafts/send`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ draftId: id }),
+    }).then(async (res) => {
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Send failed' }));
+        // Revert to ready so user can retry
+        set((state) => ({
+          drafts: state.drafts.map((d) => (d.id === id ? { ...d, status: 'ready' } : d)),
+        }));
+        console.error('Draft send failed:', err.error);
+      }
+    }).catch(() => {
+      set((state) => ({
+        drafts: state.drafts.map((d) => (d.id === id ? { ...d, status: 'ready' } : d)),
+      }));
+    });
+  },
 
   discardDraft: (id) =>
     set((state) => ({

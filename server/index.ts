@@ -6,7 +6,7 @@ import cors from 'cors';
 import { getState, setState, persistNow } from './state.js';
 import { runAgent } from './agents.js';
 import { adlerProactiveCheck, generateBriefing } from './adler.js';
-import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile } from './outlook.js';
+import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail } from './outlook.js';
 import { createTelegramBot, activeChatIds, sendMorningBriefing, sendHabitReminder } from './telegram.js';
 
 const app = express();
@@ -152,6 +152,23 @@ app.get('/api/outlook/sync', async (_req: Request, res: Response) => {
 
 app.get('/api/outlook/status', (_req: Request, res: Response) => {
   res.json({ authenticated: isAuthenticated() });
+});
+
+app.post('/api/drafts/send', async (req: Request, res: Response) => {
+  const { draftId } = req.body as { draftId: string };
+  const s = getState();
+  const draft = s.drafts.find((d) => d.id === draftId);
+  if (!draft) { res.status(404).json({ error: 'draft not found' }); return; }
+  if (!isAuthenticated()) { res.status(401).json({ error: 'Not authenticated', authUrl: '/api/outlook/auth' }); return; }
+  try {
+    await sendEmail(draft.to, draft.re, draft.text);
+    setState({ drafts: s.drafts.map((d) => d.id === draftId ? { ...d, status: 'sent' as const } : d) });
+    await persistNow();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Send email error:', err);
+    res.status(500).json({ error: (err as Error).message });
+  }
 });
 
 app.post('/api/drafts/reply', async (req: Request, res: Response) => {

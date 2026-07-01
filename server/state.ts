@@ -187,9 +187,11 @@ function schedulePersist(): void {
 export async function persistNow(): Promise<void> {
   if (_persistTimer) { clearTimeout(_persistTimer); _persistTimer = null; }
   try {
+    // Trim adlerMemory to last 10 messages before persisting to stay under 10MB Upstash limit
+    const payload = { ..._state, adlerMemory: _state.adlerMemory.slice(-10) };
     const result = await redisFetch(`/set/${STATE_KEY}`, {
       method: 'POST',
-      body: JSON.stringify(JSON.stringify(_state)),
+      body: JSON.stringify(JSON.stringify(payload)),
     }) as { result: string } | null;
     console.log(`State persisted: ${_state.tasks.length} tasks, result=${JSON.stringify(result)}`);
   } catch (err) {

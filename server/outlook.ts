@@ -134,7 +134,7 @@ function fmtRelative(iso?: string): string {
 }
 
 export async function syncMail(): Promise<void> {
-  const data = await graphGet('/me/mailFolders/inbox/messages?$top=20&$orderby=receivedDateTime%20desc&$select=id,subject,from,receivedDateTime,bodyPreview,isRead') as { value: GraphMessage[] };
+  const data = await graphGet('/me/mailFolders/inbox/messages?$top=20&$orderby=receivedDateTime%20desc&$select=id,subject,from,receivedDateTime,bodyPreview,isRead&$filter=inferenceClassification%20eq%20%27focused%27') as { value: GraphMessage[] };
 
   const priorities = ['p1', 'p2', 'p3'] as const;
 

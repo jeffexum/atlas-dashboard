@@ -307,9 +307,12 @@ Your personality: ${meta.personality}
 Current state summary:
 ${stateContext}
 
-When the user asks you to DO something (add a task, log a habit, create an event, etc.),
-respond with both a friendly confirmation AND call the appropriate tool.
-Keep responses concise — 1-3 sentences max.`;
+When the user asks you to DO something (add a task, log a habit, create an event, etc.):
+- Act immediately. NEVER ask clarifying questions before calling a tool.
+- Infer missing details from context: default priority is P2, default category is Work.
+- If the user says "P1" or "urgent", use p1. If they mention health/fitness, use Health. Personal matters use Personal.
+- After calling the tool, confirm in one short sentence what you did.
+- Keep ALL responses under 2 sentences. No lists, no numbered options.`;
 
   const client = new Anthropic({ apiKey });
   const appliedActions: AppliedAction[] = [];

@@ -57,6 +57,8 @@ function TaskCard({
   task,
   onToggle,
   onMove,
+  onEdit,
+  onDelete,
   isHovered,
   onMouseEnter,
   onMouseLeave,
@@ -64,6 +66,8 @@ function TaskCard({
   task: Task;
   onToggle?: () => void;
   onMove?: (col: 'today' | 'upcoming' | 'done') => void;
+  onEdit?: (updates: Partial<Pick<Task, 'title' | 'priority' | 'category'>>) => void;
+  onDelete?: () => void;
   isHovered: boolean;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
@@ -71,6 +75,47 @@ function TaskCard({
   const isDone = task.column === 'done';
   const isUpcoming = task.column === 'upcoming';
   const isToday = task.column === 'today';
+  const [editing, setEditing] = useState(false);
+  const [editTitle, setEditTitle] = useState(task.title);
+  const [editPriority, setEditPriority] = useState(task.priority);
+  const [editCategory, setEditCategory] = useState(task.category);
+
+  function saveEdit() {
+    onEdit?.({ title: editTitle.trim() || task.title, priority: editPriority, category: editCategory });
+    setEditing(false);
+  }
+
+  if (editing) {
+    return (
+      <div style={{ ...cardBase, borderLeft: `3px solid ${priorityColor(editPriority)}`, padding: '10px 12px', marginBottom: '8px' }}>
+        <input
+          autoFocus
+          value={editTitle}
+          onChange={(e) => setEditTitle(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') saveEdit(); if (e.key === 'Escape') setEditing(false); }}
+          style={{ width: '100%', border: '1px solid var(--accent)', borderRadius: 3, padding: '5px 7px', fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--bg)', outline: 'none', boxSizing: 'border-box', marginBottom: 7 }}
+        />
+        <div style={{ display: 'flex', gap: 4, marginBottom: 7 }}>
+          {(['p1', 'p2', 'p3'] as const).map((p) => (
+            <button key={p} onClick={() => setEditPriority(p)} style={{ padding: '2px 7px', fontSize: 11, fontFamily: "'JetBrains Mono', monospace", fontWeight: 600, border: `1px solid ${editPriority === p ? priorityColor(p) : 'var(--line)'}`, borderRadius: 3, background: editPriority === p ? priorityBg(p) : 'transparent', color: editPriority === p ? priorityColor(p) : 'var(--mut)', cursor: 'pointer' }}>
+              {p.toUpperCase()}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 4, marginBottom: 9 }}>
+          {['Work', 'Personal', 'Health'].map((cat) => (
+            <button key={cat} onClick={() => setEditCategory(cat)} style={{ padding: '2px 7px', fontSize: 11, border: `1px solid ${editCategory === cat ? 'var(--accent)' : 'var(--line)'}`, borderRadius: 10, background: editCategory === cat ? 'var(--accentbg)' : 'transparent', color: editCategory === cat ? 'var(--accent)' : 'var(--mut)', cursor: 'pointer', fontFamily: 'inherit' }}>
+              {cat}
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button onClick={saveEdit} style={{ padding: '3px 10px', fontSize: 12, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer', fontFamily: 'inherit' }}>Save</button>
+          <button onClick={() => setEditing(false)} style={{ padding: '3px 10px', fontSize: 12, background: 'transparent', color: 'var(--mut)', border: '1px solid var(--line)', borderRadius: 3, cursor: 'pointer', fontFamily: 'inherit' }}>Cancel</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -101,130 +146,44 @@ function TaskCard({
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '5px', paddingLeft: '24px', flexWrap: 'wrap' }}>
-        <span
-          style={{
-            fontSize: '10.5px',
-            padding: '2px 6px',
-            borderRadius: '3px',
-            background: priorityBg(task.priority),
-            color: priorityColor(task.priority),
-            fontWeight: 600,
-            fontFamily: "'JetBrains Mono', monospace",
-          }}
-        >
+        <span style={{ fontSize: '10.5px', padding: '2px 6px', borderRadius: '3px', background: priorityBg(task.priority), color: priorityColor(task.priority), fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
           {priorityLabel(task.priority)}
         </span>
-        <span
-          style={{
-            fontSize: '11px',
-            color: 'var(--mut)',
-            background: 'var(--bg)',
-            border: '1px solid var(--line2)',
-            borderRadius: '2px',
-            padding: '1px 5px',
-          }}
-        >
+        <span style={{ fontSize: '11px', color: 'var(--mut)', background: 'var(--bg)', border: '1px solid var(--line2)', borderRadius: '2px', padding: '1px 5px' }}>
           {task.category}
         </span>
         {task.agentBadge && (
-          <span
-            style={{
-              fontSize: '10.5px',
-              padding: '1px 6px',
-              borderRadius: '10px',
-              background: 'oklch(0.94 0.06 150)',
-              color: 'oklch(0.38 0.1 150)',
-              fontWeight: 500,
-            }}
-          >
+          <span style={{ fontSize: '10.5px', padding: '1px 6px', borderRadius: '10px', background: 'oklch(0.94 0.06 150)', color: 'oklch(0.38 0.1 150)', fontWeight: 500 }}>
             {task.agentBadge}
           </span>
         )}
       </div>
 
-      {/* Move buttons shown on hover */}
-      {isHovered && onMove && (
-        <div
-          style={{
-            position: 'absolute',
-            top: '50%',
-            right: 8,
-            transform: 'translateY(-50%)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 3,
-          }}
-        >
-          {isToday && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onMove('upcoming'); }}
-              style={{
-                padding: '2px 6px',
-                fontSize: 9,
-                border: '1px solid var(--line)',
-                borderRadius: 3,
-                background: 'var(--card)',
-                color: 'var(--ink2)',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                whiteSpace: 'nowrap',
-              }}
-            >
+      {/* Hover actions */}
+      {isHovered && (
+        <div style={{ position: 'absolute', top: '50%', right: 8, transform: 'translateY(-50%)', display: 'flex', flexDirection: 'column', gap: 3 }}>
+          {onEdit && (
+            <button onClick={(e) => { e.stopPropagation(); setEditTitle(task.title); setEditPriority(task.priority); setEditCategory(task.category); setEditing(true); }} style={{ padding: '2px 6px', fontSize: 9, border: '1px solid var(--line)', borderRadius: 3, background: 'var(--card)', color: 'var(--ink2)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+              Edit
+            </button>
+          )}
+          {onMove && isToday && (
+            <button onClick={(e) => { e.stopPropagation(); onMove('upcoming'); }} style={{ padding: '2px 6px', fontSize: 9, border: '1px solid var(--line)', borderRadius: 3, background: 'var(--card)', color: 'var(--ink2)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
               → Upcoming
             </button>
           )}
-          {isUpcoming && (
+          {onMove && isUpcoming && (
             <>
-              <button
-                onClick={(e) => { e.stopPropagation(); onMove('today'); }}
-                style={{
-                  padding: '2px 6px',
-                  fontSize: 9,
-                  border: '1px solid var(--line)',
-                  borderRadius: 3,
-                  background: 'var(--card)',
-                  color: 'var(--ink2)',
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                ← Today
-              </button>
-              <button
-                onClick={(e) => { e.stopPropagation(); onMove('done'); }}
-                style={{
-                  padding: '2px 6px',
-                  fontSize: 9,
-                  border: '1px solid var(--line)',
-                  borderRadius: 3,
-                  background: 'var(--card)',
-                  color: 'var(--ink2)',
-                  cursor: 'pointer',
-                  fontFamily: 'inherit',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                → Done
-              </button>
+              <button onClick={(e) => { e.stopPropagation(); onMove('today'); }} style={{ padding: '2px 6px', fontSize: 9, border: '1px solid var(--line)', borderRadius: 3, background: 'var(--card)', color: 'var(--ink2)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>← Today</button>
+              <button onClick={(e) => { e.stopPropagation(); onMove('done'); }} style={{ padding: '2px 6px', fontSize: 9, border: '1px solid var(--line)', borderRadius: 3, background: 'var(--card)', color: 'var(--ink2)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>→ Done</button>
             </>
           )}
-          {isDone && (
-            <button
-              onClick={(e) => { e.stopPropagation(); onMove('today'); }}
-              style={{
-                padding: '2px 6px',
-                fontSize: 9,
-                border: '1px solid var(--line)',
-                borderRadius: 3,
-                background: 'var(--card)',
-                color: 'var(--ink2)',
-                cursor: 'pointer',
-                fontFamily: 'inherit',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              ← Today
+          {onMove && isDone && (
+            <button onClick={(e) => { e.stopPropagation(); onMove('today'); }} style={{ padding: '2px 6px', fontSize: 9, border: '1px solid var(--line)', borderRadius: 3, background: 'var(--card)', color: 'var(--ink2)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>← Today</button>
+          )}
+          {onDelete && (
+            <button onClick={(e) => { e.stopPropagation(); onDelete(); }} style={{ padding: '2px 6px', fontSize: 9, border: '1px solid var(--p1)', borderRadius: 3, background: 'oklch(0.97 0.02 27)', color: 'var(--p1)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+              Delete
             </button>
           )}
         </div>
@@ -242,6 +201,8 @@ export default function Todos({ setScreen: _setScreen }: Props) {
   const toggleTask = useStore((s) => s.toggleTask);
   const addTask = useStore((s) => s.addTask);
   const moveTask = useStore((s) => s.moveTask);
+  const editTask = useStore((s) => s.editTask);
+  const deleteTask = useStore((s) => s.deleteTask);
   const [sortByPriority, setSortByPriority] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -498,6 +459,8 @@ export default function Todos({ setScreen: _setScreen }: Props) {
                   task={task}
                   onToggle={() => toggleTask(task.id)}
                   onMove={(col) => moveTask(task.id, col)}
+                  onEdit={(updates) => editTask(task.id, updates)}
+                  onDelete={() => deleteTask(task.id)}
                   isHovered={hoveredId === task.id}
                   onMouseEnter={() => setHoveredId(task.id)}
                   onMouseLeave={() => setHoveredId(null)}

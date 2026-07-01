@@ -251,6 +251,8 @@ interface StoreState {
   toggleTask: (id: string) => void;
   addTask: (task: Task) => void;
   moveTask: (id: string, column: 'today' | 'upcoming' | 'done') => void;
+  editTask: (id: string, updates: Partial<Pick<Task, 'title' | 'priority' | 'category'>>) => void;
+  deleteTask: (id: string) => void;
 
   toggleHabitToday: (id: string) => void;
   updateGoalProgress: (id: string, pct: number) => void;
@@ -377,6 +379,14 @@ export const useStore = create<StoreState>((set) => ({
         t.id === id ? { ...t, column, done: column === 'done' } : t
       ),
     })),
+
+  editTask: (id, updates) =>
+    set((state) => ({
+      tasks: state.tasks.map((t) => t.id === id ? { ...t, ...updates } : t),
+    })),
+
+  deleteTask: (id) =>
+    set((state) => ({ tasks: state.tasks.filter((t) => t.id !== id) })),
 
   toggleHabitToday: (id) =>
     set((state) => ({

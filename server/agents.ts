@@ -111,6 +111,31 @@ const TOOLS: Anthropic.Tool[] = [
     },
   },
   {
+    name: 'edit_task',
+    description: 'Edit an existing task title, priority, or category',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        id: { type: 'string', description: 'Task ID' },
+        title: { type: 'string', description: 'New title (optional)' },
+        priority: { type: 'string', enum: ['p1', 'p2', 'p3'], description: 'New priority (optional)' },
+        category: { type: 'string', enum: ['Work', 'Personal', 'Health'], description: 'New category (optional)' },
+      },
+      required: ['id'],
+    },
+  },
+  {
+    name: 'delete_task',
+    description: 'Delete a task permanently',
+    input_schema: {
+      type: 'object' as const,
+      properties: {
+        id: { type: 'string', description: 'Task ID' },
+      },
+      required: ['id'],
+    },
+  },
+  {
     name: 'move_task',
     description: 'Move a task to a different column',
     input_schema: {
@@ -231,6 +256,16 @@ function applyToolCall(toolName: string, input: Record<string, unknown>): void {
         column: 'today',
         agentBadge: 'From AI',
       });
+      break;
+    case 'edit_task':
+      state.editTask(input.id as string, {
+        ...(input.title ? { title: input.title as string } : {}),
+        ...(input.priority ? { priority: input.priority as 'p1' | 'p2' | 'p3' } : {}),
+        ...(input.category ? { category: input.category as string } : {}),
+      });
+      break;
+    case 'delete_task':
+      state.deleteTask(input.id as string);
       break;
     case 'toggle_task':
       state.toggleTask(input.id as string);

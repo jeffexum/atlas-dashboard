@@ -268,6 +268,16 @@ export function toggleTask(id: string): void {
   });
 }
 
+export function editTask(id: string, updates: Partial<Pick<Task, 'title' | 'priority' | 'category'>>): void {
+  setState({
+    tasks: _state.tasks.map((t) => t.id === id ? { ...t, ...updates } : t),
+  });
+}
+
+export function deleteTask(id: string): void {
+  setState({ tasks: _state.tasks.filter((t) => t.id !== id) });
+}
+
 export function moveTask(id: string, column: 'today' | 'upcoming' | 'done'): void {
   setState({
     tasks: _state.tasks.map((t) =>

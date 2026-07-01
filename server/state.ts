@@ -272,26 +272,26 @@ export async function loadPersistedState(): Promise<void> {
       redisGet<number>(KEYS.briefingGeneratedAt),
     ]);
 
-    _state = {
-      tasks: tasks ?? [],
-      comms: comms ?? [],
-      drafts: drafts ?? [],
-      proposedActions: proposedActions ?? [],
-      habits: habits ?? [],
-      goals: goals ?? [],
-      books: books ?? [],
-      highlights: highlights ?? [],
-      ideas: ideas ?? [],
-      journalEntries: journalEntries ?? [],
-      calEvents: calEvents ?? [],
-      calNote: calNote ?? '',
+    _state = sanitize({
+      tasks: Array.isArray(tasks) ? tasks : [],
+      comms: Array.isArray(comms) ? comms : [],
+      drafts: Array.isArray(drafts) ? drafts : [],
+      proposedActions: Array.isArray(proposedActions) ? proposedActions : [],
+      habits: Array.isArray(habits) ? habits : [],
+      goals: Array.isArray(goals) ? goals : [],
+      books: Array.isArray(books) ? books : [],
+      highlights: Array.isArray(highlights) ? highlights : [],
+      ideas: Array.isArray(ideas) ? ideas : [],
+      journalEntries: Array.isArray(journalEntries) ? journalEntries : [],
+      calEvents: Array.isArray(calEvents) ? calEvents : [],
+      calNote: typeof calNote === 'string' ? calNote : '',
       adlerNotes: (adlerNotes && typeof adlerNotes === 'object' && !Array.isArray(adlerNotes)) ? adlerNotes : {},
-      adlerMemory: adlerMemory ?? [],
-      adlerLastContact: adlerLastContact ?? 0,
-      briefingText: briefingText ?? '',
-      briefingNudges: briefingNudges ?? [],
-      briefingGeneratedAt: briefingGeneratedAt ?? 0,
-    };
+      adlerMemory: Array.isArray(adlerMemory) ? adlerMemory : [],
+      adlerLastContact: typeof adlerLastContact === 'number' ? adlerLastContact : 0,
+      briefingText: typeof briefingText === 'string' ? briefingText : '',
+      briefingNudges: Array.isArray(briefingNudges) ? briefingNudges : [],
+      briefingGeneratedAt: typeof briefingGeneratedAt === 'number' ? briefingGeneratedAt : 0,
+    });
     console.log(`State restored from Redis: ${_state.tasks.length} tasks`);
     return;
   } catch (err) {

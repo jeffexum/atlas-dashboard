@@ -268,13 +268,14 @@ export async function runAdler(userMessage: string): Promise<string> {
   appendMemory('user', userMessage);
 
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: userMessage }];
+  const system = `${ADLER_SYSTEM}\n\n${buildContext()}`;
 
   // Agentic loop — keep going until stop_reason is 'end_turn' (no more tool calls)
   for (let i = 0; i < 5; i++) {
     const response = await getClient().messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1024,
-      system: `${ADLER_SYSTEM}\n\n${buildContext()}`,
+      system,
       tools: ADLER_TOOLS,
       messages,
     });

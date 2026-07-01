@@ -252,8 +252,8 @@ const listeners: Listener[] = [];
 
 // ── Upstash Redis persistence ─────────────────────────────────────────────────
 
-const REDIS_URL = process.env.UPSTASH_REDIS_URL;
-const REDIS_TOKEN = process.env.UPSTASH_REDIS_TOKEN;
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL || process.env.UPSTASH_REDIS_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.UPSTASH_REDIS_TOKEN;
 const STATE_KEY = 'atlas:state';
 
 async function redisFetch(path: string, options?: RequestInit): Promise<unknown> {

@@ -33,7 +33,7 @@ services:
     staticPublishPath: ./dist
     envVars:
       - key: VITE_API_URL
-        value: https://atlas-api.onrender.com
+        value: https://atlas-api-fdlq.onrender.com
     routes:
       - type: rewrite
         source: /*

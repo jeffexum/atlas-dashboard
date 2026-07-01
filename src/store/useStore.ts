@@ -172,29 +172,36 @@ export const useStore = create<StoreState>((set) => ({
   briefingNudges: [],
   userProfile: '',
 
-  acceptAction: (id) =>
-    set((state) => {
-      const action = state.proposedActions.find((a) => a.id === id);
-      if (!action) return state;
-      const newTasks = [...state.tasks];
-      if (action.kind === 'todo') {
-        newTasks.push({
-          id: `t-${Date.now()}`,
-          title: action.text.replace('Add to-do: ', ''),
-          category: 'Work',
-          priority: action.priority ?? 'p2',
-          done: false,
-          agentBadge: 'From inbox',
-          column: 'today',
-        });
-      }
-      return {
-        tasks: newTasks,
-        proposedActions: state.proposedActions.map((a) =>
-          a.id === id ? { ...a, status: 'accepted' } : a
-        ),
+  acceptAction: (id) => {
+    const action = useStore.getState().proposedActions.find((a) => a.id === id);
+    if (!action) return;
+    let newTask: Task | null = null;
+    if (action.kind === 'todo') {
+      newTask = {
+        id: `t-${Date.now()}`,
+        title: action.text.replace('Add to-do: ', ''),
+        category: 'Work',
+        priority: action.priority ?? 'p2',
+        done: false,
+        agentBadge: 'From inbox',
+        column: 'today',
       };
-    }),
+    }
+    set((state) => ({
+      tasks: newTask ? [...state.tasks, newTask!] : state.tasks,
+      proposedActions: state.proposedActions.map((a) =>
+        a.id === id ? { ...a, status: 'accepted' } : a
+      ),
+    }));
+    if (newTask) {
+      const API = import.meta.env.VITE_API_URL || '';
+      fetch(`${API}/api/tasks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newTask),
+      }).catch(() => {});
+    }
+  },
 
   dismissAction: (id) =>
     set((state) => ({
@@ -249,26 +256,29 @@ export const useStore = create<StoreState>((set) => ({
       comms: state.comms.map((c) => (c.id === id ? { ...c, status: 'snoozed' } : c)),
     })),
 
-  addTodoFromComm: (id) =>
-    set((state) => {
-      const comm = state.comms.find((c) => c.id === id);
-      if (!comm) return state;
-      return {
-        tasks: [
-          ...state.tasks,
-          {
-            id: `t-${Date.now()}`,
-            title: `Reply to ${comm.who}: ${comm.subject}`,
-            category: 'Work',
-            priority: comm.priority,
-            done: false,
-            agentBadge: 'From inbox',
-            column: 'today' as const,
-          },
-        ],
-        comms: state.comms.map((c) => (c.id === id ? { ...c, status: 'snoozed' } : c)),
-      };
-    }),
+  addTodoFromComm: (id) => {
+    const comm = useStore.getState().comms.find((c) => c.id === id);
+    if (!comm) return;
+    const newTask: Task = {
+      id: `t-${Date.now()}`,
+      title: `Reply to ${comm.who}: ${comm.subject}`,
+      category: 'Work',
+      priority: comm.priority,
+      done: false,
+      agentBadge: 'From inbox',
+      column: 'today' as const,
+    };
+    set((state) => ({
+      tasks: [...state.tasks, newTask],
+      comms: state.comms.map((c) => (c.id === id ? { ...c, status: 'snoozed' } : c)),
+    }));
+    const API = import.meta.env.VITE_API_URL || '';
+    fetch(`${API}/api/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newTask),
+    }).catch(() => {});
+  },
 
   toggleTask: (id) => {
     set((state) => ({

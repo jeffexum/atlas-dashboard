@@ -265,10 +265,22 @@ function appendMemory(role: 'user' | 'adler', content: string): void {
 export async function runAdler(userMessage: string): Promise<string> {
   if (!process.env.ANTHROPIC_API_KEY) return 'ANTHROPIC_API_KEY not configured.';
 
-  appendMemory('user', userMessage);
+  try {
+    appendMemory('user', userMessage);
+  } catch (err) {
+    console.error('appendMemory error:', err);
+    throw err;
+  }
+
+  let system: string;
+  try {
+    system = `${ADLER_SYSTEM}\n\n${buildContext()}`;
+  } catch (err) {
+    console.error('buildContext error:', err);
+    throw err;
+  }
 
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: userMessage }];
-  const system = `${ADLER_SYSTEM}\n\n${buildContext()}`;
 
   // Agentic loop — keep going until stop_reason is 'end_turn' (no more tool calls)
   for (let i = 0; i < 5; i++) {

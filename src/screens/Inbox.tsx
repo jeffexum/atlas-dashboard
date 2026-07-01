@@ -189,20 +189,6 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
         </div>
 
         {/* Scout callout */}
-        <div
-          style={{
-            background: 'var(--accentbg)',
-            borderLeft: '3px solid var(--accent)',
-            borderRadius: 'var(--radius-card)',
-            padding: '10px 14px',
-            marginBottom: '12px',
-            fontSize: '13px',
-            color: 'var(--ink2)',
-          }}
-        >
-          Scout processed 8 messages. 2 require immediate action, 3 drafts are ready to send.
-        </div>
-
         {/* Messages */}
         <div>
           {comms.map((comm) => (

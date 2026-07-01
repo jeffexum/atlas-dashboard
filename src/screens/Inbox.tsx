@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 import { useStore } from '../store/useStore';
 import type { Screen } from '../App';
 
@@ -51,6 +52,7 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
   const dismissAction = useStore((s) => s.dismissAction);
   const draftReplyForComm = useStore((s) => s.draftReplyForComm);
 
+  const [syncing, setSyncing] = useState(false);
   const [draftedId, setDraftedId] = useState<string | null>(null);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
@@ -81,6 +83,11 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
 
   const readyDrafts = drafts.filter((d) => d.status === 'ready' || d.status === 'sent' || d.status === 'discarded');
   const readyDraftCount = drafts.filter((d) => d.status === 'ready').length;
+
+  async function handleSync() {
+    setSyncing(true);
+    try { await fetch(`${API_URL}/api/outlook/sync`); } finally { setSyncing(false); }
+  }
 
   function handleDraftReply(commId: string) {
     draftReplyForComm(commId);
@@ -119,6 +126,9 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
           >
             {comms.length}
           </span>
+          <button onClick={handleSync} disabled={syncing} style={{ ...smallBtn, marginLeft: 'auto', opacity: syncing ? 0.6 : 1 }}>
+            {syncing ? 'Syncing…' : '↻ Sync'}
+          </button>
         </div>
 
         {/* Scout callout */}

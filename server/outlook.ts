@@ -109,6 +109,7 @@ interface GraphMessage {
   receivedDateTime?: string;
   bodyPreview?: string;
   isRead?: boolean;
+  inferenceClassification?: 'focused' | 'other';
 }
 
 interface GraphEvent {
@@ -134,11 +135,14 @@ function fmtRelative(iso?: string): string {
 }
 
 export async function syncMail(): Promise<void> {
-  const data = await graphGet('/me/mailFolders/inbox/messages?$top=20&$orderby=receivedDateTime%20desc&$select=id,subject,from,receivedDateTime,bodyPreview,isRead&$filter=inferenceClassification%20eq%20%27focused%27') as { value: GraphMessage[] };
+  const data = await graphGet('/me/mailFolders/inbox/messages?$top=50&$orderby=receivedDateTime%20desc&$select=id,subject,from,receivedDateTime,bodyPreview,isRead,inferenceClassification') as { value: GraphMessage[] };
+
+  // Keep only Focused messages (filter Other/spam Microsoft has already classified)
+  const focused = (data.value || []).filter((m) => m.inferenceClassification === 'focused').slice(0, 20);
 
   const priorities = ['p1', 'p2', 'p3'] as const;
 
-  const comms = (data.value || []).map((msg, i) => ({
+  const comms = focused.map((msg, i) => ({
     id: msg.id,
     source: 'email' as const,
     who: msg.from?.emailAddress?.name || msg.from?.emailAddress?.address || 'Unknown',

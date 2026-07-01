@@ -218,6 +218,12 @@ Write a reply that matches Jeff's communication style exactly — short, casual,
   res.json({ ok: true, draft });
 });
 
+app.post('/api/admin/clear-cal-note', async (_req: Request, res: Response) => {
+  setState({ calNote: '' });
+  await persistNow();
+  res.json({ ok: true });
+});
+
 app.post('/api/outlook/learn', async (_req: Request, res: Response) => {
   if (!isAuthenticated()) {
     res.status(401).json({ error: 'Not authenticated', authUrl: '/api/outlook/auth' });

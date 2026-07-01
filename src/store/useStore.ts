@@ -538,3 +538,23 @@ export async function syncStateToServer() {
     body: JSON.stringify(state)
   }).catch(() => {})
 }
+
+export async function initFromServer() {
+  try {
+    const res = await fetch(`${API_URL}/api/state`)
+    if (!res.ok) return
+    const serverState = await res.json()
+    useStore.setState(serverState)
+  } catch {}
+}
+
+export function subscribeToServerEvents() {
+  const es = new EventSource(`${API_URL}/api/events`)
+  es.onmessage = (e) => {
+    try {
+      const serverState = JSON.parse(e.data)
+      useStore.setState(serverState)
+    } catch {}
+  }
+  return () => es.close()
+}

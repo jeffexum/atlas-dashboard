@@ -340,12 +340,32 @@ export async function migrateLegacyState(): Promise<void> {
 
 // ── Core state API ────────────────────────────────────────────────────────────
 
+const ARRAY_FIELDS: (keyof ServerState)[] = [
+  'tasks', 'comms', 'drafts', 'proposedActions', 'habits', 'goals',
+  'books', 'highlights', 'ideas', 'journalEntries', 'calEvents',
+  'adlerMemory', 'briefingNudges',
+];
+
+function sanitize(s: ServerState): ServerState {
+  const out = { ...s };
+  for (const k of ARRAY_FIELDS) {
+    if (!Array.isArray(out[k])) {
+      console.warn(`state.${k} was not an array (${typeof out[k]}), resetting to []`);
+      (out as Record<string, unknown>)[k] = [];
+    }
+  }
+  if (typeof out.adlerNotes !== 'object' || Array.isArray(out.adlerNotes) || out.adlerNotes === null) {
+    out.adlerNotes = {};
+  }
+  return out;
+}
+
 export function getState(): ServerState {
   return _state;
 }
 
 export function setState(partial: Partial<ServerState>): void {
-  _state = { ..._state, ...partial };
+  _state = sanitize({ ..._state, ...partial });
   listeners.forEach((fn) => fn(_state));
   schedulePersist();
 }

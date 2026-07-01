@@ -189,7 +189,7 @@ const seedDrafts: Draft[] = [
     id: 'd1',
     to: 'Mark Johnson',
     re: 'Q2 Budget',
-    text: "Hi Mark, I've reviewed the Q2 numbers. The variance in Q3 projections looks reasonable given the market conditions. I'll sign off — can you send the final doc for my records? Thanks, Alex",
+    text: "Hi Mark, I've reviewed the Q2 numbers. The variance in Q3 projections looks reasonable given the market conditions. I'll sign off — can you send the final doc for my records? Thanks, Jeff",
     status: 'ready',
   },
   {
@@ -514,7 +514,7 @@ export const useStore = create<StoreState>((set) => ({
             id: Date.now().toString(),
             to: comm.who,
             re: comm.subject,
-            text: `Hi ${firstName}, thanks for reaching out. I'll get back to you shortly. — Alex`,
+            text: `Hi ${firstName}, thanks for reaching out. I'll get back to you shortly. — Jeff`,
             status: 'ready' as const,
           },
         ],

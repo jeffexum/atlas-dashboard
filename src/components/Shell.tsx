@@ -69,15 +69,19 @@ export default function Shell({ screen, setScreen }: Props) {
   const urgentComms = comms.filter((c) => c.priority === 'p1' && c.status === 'open').length;
   const todayTaskCount = tasks.filter((t) => t.column === 'today').length;
 
+  const now = new Date();
+  const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 17 ? 'Good afternoon' : 'Good evening';
+  const dateStr = now.toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' });
+
   const PAGE_TITLES: Record<Screen, { title: string; sub: string }> = {
-    home: { title: 'Good morning, Alex', sub: 'Mon · Jun 29, 2026' },
+    home: { title: `${greeting}, Jeff`, sub: dateStr },
     inbox: { title: 'Inbox', sub: `${openComms} messages · ${urgentComms} urgent` },
-    calendar: { title: 'Calendar', sub: 'Monday, June 29' },
+    calendar: { title: 'Calendar', sub: now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) },
     todos: { title: 'To-dos', sub: `${todayTaskCount} tasks today` },
     goals: { title: 'Goals', sub: '4 active goals' },
     habits: { title: 'Habits', sub: '5 tracked habits' },
     health: { title: 'Health', sub: "Today's overview" },
-    finances: { title: 'Finances', sub: 'June 2026' },
+    finances: { title: 'Finances', sub: now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) },
     reading: { title: 'Reading', sub: '2 in progress' },
     ideas: { title: 'Ideas & Journal', sub: 'Your thinking space' },
     assistant: { title: 'Scout', sub: 'AI assistant · ready' },

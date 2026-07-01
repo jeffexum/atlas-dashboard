@@ -249,7 +249,7 @@ export const useStore = create<StoreState>((set) => ({
       };
     }),
 
-  toggleTask: (id) =>
+  toggleTask: (id) => {
     set((state) => ({
       tasks: state.tasks.map((t) => {
         if (t.id !== id) return t;
@@ -257,17 +257,41 @@ export const useStore = create<StoreState>((set) => ({
         if (t.column === 'done') return { ...t, done: false, column: 'today' as const };
         return t;
       }),
-    })),
+    }));
+    const API = import.meta.env.VITE_API_URL || '';
+    const task = useStore.getState().tasks.find((t) => t.id === id);
+    if (task) {
+      fetch(`${API}/api/tasks/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ done: task.done, column: task.column }),
+      }).catch(() => {});
+    }
+  },
 
-  addTask: (task) =>
-    set((state) => ({ tasks: [...state.tasks, task] })),
+  addTask: (task) => {
+    set((state) => ({ tasks: [...state.tasks, task] }));
+    const API = import.meta.env.VITE_API_URL || '';
+    fetch(`${API}/api/tasks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(task),
+    }).catch(() => {});
+  },
 
-  moveTask: (id, column) =>
+  moveTask: (id, column) => {
     set((state) => ({
       tasks: state.tasks.map((t) =>
         t.id === id ? { ...t, column, done: column === 'done' } : t
       ),
-    })),
+    }));
+    const API = import.meta.env.VITE_API_URL || '';
+    fetch(`${API}/api/tasks/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ column, done: column === 'done' }),
+    }).catch(() => {});
+  },
 
   editTask: (id, updates) => {
     set((state) => ({

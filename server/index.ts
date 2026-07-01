@@ -42,6 +42,14 @@ app.post('/api/state', (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+app.post('/api/tasks', async (req: Request, res: Response) => {
+  const task = req.body;
+  const s = getState();
+  setState({ tasks: [...s.tasks, task] });
+  await persistNow();
+  res.json({ ok: true });
+});
+
 app.patch('/api/tasks/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   const s = getState();

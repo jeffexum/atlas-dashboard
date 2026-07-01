@@ -163,6 +163,9 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
             {userProfile && (
               <button onClick={handleDownloadProfile} style={smallBtn}>⬇ Profile.md</button>
             )}
+            <a href={`${API_URL}/api/outlook/auth`} style={{ ...smallBtn, textDecoration: 'none', display: 'inline-flex', alignItems: 'center' }}>
+              🔑 Re-auth
+            </a>
           </div>
         </div>
 

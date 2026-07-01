@@ -184,10 +184,10 @@ export function isAuthenticated(): boolean {
   return tokenData !== null;
 }
 
-async function graphGet(path: string): Promise<unknown> {
+async function graphGet(path: string, extraHeaders?: Record<string, string>): Promise<unknown> {
   const token = await getAccessToken();
   const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, ...extraHeaders },
   });
   if (!res.ok) throw new Error(`Graph API ${path} returned ${res.status}`);
   return res.json();
@@ -300,7 +300,8 @@ export async function syncCalendar(): Promise<void> {
   const endStr = end.toISOString();
 
   const data = await graphGet(
-    `/me/calendarview?startDateTime=${encodeURIComponent(start)}&endDateTime=${encodeURIComponent(endStr)}&$top=20&$orderby=start/dateTime&$select=id,subject,start,end,organizer,location,isAllDay,bodyPreview`
+    `/me/calendarview?startDateTime=${encodeURIComponent(start)}&endDateTime=${encodeURIComponent(endStr)}&$top=20&$orderby=start/dateTime&$select=id,subject,start,end,organizer,location,isAllDay,bodyPreview`,
+    { 'Prefer': 'outlook.timezone="Mountain Standard Time"' }
   ) as { value: GraphEvent[] };
 
   const colorPalette = ['var(--blue)', 'var(--violet)', 'var(--accent)', 'var(--warm)', 'var(--p1)'];

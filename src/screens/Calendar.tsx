@@ -55,6 +55,8 @@ const COLOR_OPTIONS = [
   { label: 'Warm', value: 'var(--warm)', hex: '#fb923c' },
 ];
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+
 export default function Calendar() {
   const calEvents = useStore((s) => s.calEvents);
   const calNote = useStore((s) => s.calNote);
@@ -63,6 +65,7 @@ export default function Calendar() {
   const addTask = useStore((s) => s.addTask);
 
   const [selectedDay, setSelectedDay] = useState(_now.getDate());
+  const [syncing, setSyncing] = useState(false);
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
   // Add event form state
@@ -192,6 +195,26 @@ export default function Calendar() {
           >
             {dayEvents.length} event{dayEvents.length !== 1 ? 's' : ''}
           </span>
+          <button
+            onClick={async () => {
+              setSyncing(true);
+              try { await fetch(`${API_URL}/api/outlook/sync`); } finally { setSyncing(false); }
+            }}
+            disabled={syncing}
+            style={{
+              marginLeft: 'auto',
+              fontSize: 11,
+              padding: '3px 10px',
+              borderRadius: 6,
+              border: '1px solid var(--line)',
+              background: 'transparent',
+              color: 'var(--ink2)',
+              cursor: syncing ? 'default' : 'pointer',
+              opacity: syncing ? 0.5 : 1,
+            }}
+          >
+            {syncing ? 'Syncing…' : '↻ Sync'}
+          </button>
         </div>
 
         {/* Timeline body */}

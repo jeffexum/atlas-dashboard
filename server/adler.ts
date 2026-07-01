@@ -1,7 +1,7 @@
 // server/adler.ts — Adler, your personal coach agent
 
 import Anthropic from '@anthropic-ai/sdk';
-import { getState, setState } from './state.js';
+import { getState, setState, persistNow } from './state.js';
 import * as state from './state.js';
 
 const ADLER_SYSTEM = `You are Adler, a personal coach embedded in the user's life dashboard.
@@ -109,9 +109,14 @@ const ADLER_TOOLS: Anthropic.Tool[] = [
     input_schema: { type: 'object' as const, properties: { text: { type: 'string' } }, required: ['text'] },
   },
   {
-    name: 'update_adler_notes',
-    description: 'Update your persistent notes about the user — things to remember across conversations',
-    input_schema: { type: 'object' as const, properties: { notes: { type: 'string', description: 'Full updated notes (replaces existing)' } }, required: ['notes'] },
+    name: 'write_memory_section',
+    description: 'Write or update a named memory section. Use descriptive section names like "user_profile", "preferences", "patterns", "ongoing", "family", "work_context". Each section is stored independently — updating one never erases others.',
+    input_schema: { type: 'object' as const, properties: { section: { type: 'string', description: 'Section name (snake_case, e.g. "user_profile")' }, content: { type: 'string', description: 'Content to store in this section (markdown supported)' } }, required: ['section', 'content'] },
+  },
+  {
+    name: 'delete_memory_section',
+    description: 'Delete a named memory section that is no longer relevant',
+    input_schema: { type: 'object' as const, properties: { section: { type: 'string', description: 'Section name to delete' } }, required: ['section'] },
   },
 ];
 
@@ -167,9 +172,19 @@ function applyTool(name: string, input: Record<string, unknown>): void {
       setState({ journalEntries: [{ id: `j-${Date.now()}`, date, text: input.text as string }, ...s.journalEntries] });
       break;
     }
-    case 'update_adler_notes':
-      setState({ adlerNotes: input.notes as string });
+    case 'write_memory_section': {
+      const notes = { ...s.adlerNotes, [input.section as string]: input.content as string };
+      setState({ adlerNotes: notes });
+      persistNow();
       break;
+    }
+    case 'delete_memory_section': {
+      const notes = { ...s.adlerNotes };
+      delete notes[input.section as string];
+      setState({ adlerNotes: notes });
+      persistNow();
+      break;
+    }
   }
 }
 
@@ -223,8 +238,11 @@ ${actionLines.join('\n') || '  none pending'}
 
 CURRENTLY READING: ${s.books.filter((b) => b.status === 'reading').map((b) => `${b.title} by ${b.author} (${b.pct}%)`).join(', ') || 'nothing'}
 
-YOUR PERSISTENT NOTES ON THIS USER:
-${s.adlerNotes || '(none yet — update these as you learn about them)'}
+YOUR PERSISTENT MEMORY:
+${Object.keys(s.adlerNotes).length === 0
+  ? '(empty — use write_memory_section to store things you learn about the user)'
+  : Object.entries(s.adlerNotes).map(([k, v]) => `[${k}]\n${v}`).join('\n\n')
+}
 
 RECENT CONVERSATION:
 ${recentMemory.map((m) => `${m.role === 'user' ? 'User' : 'Adler'}: ${m.content}`).join('\n') || '(no history yet)'}

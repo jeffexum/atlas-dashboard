@@ -122,7 +122,7 @@ export interface ServerState {
   calEvents: CalEvent[];
   calNote: string;
   adlerMemory: AdlerMessage[];
-  adlerNotes: string;
+  adlerNotes: Record<string, string>;
   adlerLastContact: number;
   briefingText: string;
   briefingNudges: string[];
@@ -237,7 +237,7 @@ const seedState: ServerState = {
   ],
   calNote: 'Prep Q2 talking points before 3pm\nSend budget sign-off to Mark\nBlock time for blog post this week',
   adlerMemory: [],
-  adlerNotes: '',
+  adlerNotes: {},
   adlerLastContact: 0,
   briefingText: '',
   briefingNudges: [],

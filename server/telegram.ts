@@ -96,8 +96,9 @@ export function createTelegramBot(webhookUrl: string): TelegramBot {
       const reply = await runAdler(text);
       await bot.sendMessage(chatId, reply, { parse_mode: 'Markdown' });
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
       console.error('Adler error:', err);
-      await bot.sendMessage(chatId, 'Something went wrong. Try again.');
+      await bot.sendMessage(chatId, `Error: ${msg}`);
     }
   });
 

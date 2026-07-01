@@ -4,6 +4,12 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getState, setState, persistNow } from './state.js';
 import * as state from './state.js';
 
+let _anthropic: Anthropic | null = null;
+function getClient(): Anthropic {
+  if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return _anthropic;
+}
+
 const ADLER_SYSTEM = `You are Adler, a personal coach embedded in the user's life dashboard.
 
 Your name comes from Alfred Adler — the psychologist who believed in individual purpose, social interest, and the courage to be imperfect. You embody that: direct, warm, intellectually honest.
@@ -257,14 +263,11 @@ function appendMemory(role: 'user' | 'adler', content: string): void {
 }
 
 export async function runAdler(userMessage: string): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return 'ANTHROPIC_API_KEY not configured.';
+  if (!process.env.ANTHROPIC_API_KEY) return 'ANTHROPIC_API_KEY not configured.';
 
   appendMemory('user', userMessage);
 
-  const client = new Anthropic({ apiKey });
-
-  const response = await client.messages.create({
+  const response = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 1024,
     system: `${ADLER_SYSTEM}\n\n${buildContext()}`,
@@ -314,8 +317,7 @@ Respond with JSON only:
 }`;
 
 export async function adlerProactiveCheck(): Promise<string | null> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return null;
+  if (!process.env.ANTHROPIC_API_KEY) return null;
 
   const s = getState();
   const minutesSinceContact = (Date.now() - s.adlerLastContact) / 60000;
@@ -323,10 +325,8 @@ export async function adlerProactiveCheck(): Promise<string | null> {
   // Hard minimum: never more often than every 50 minutes
   if (minutesSinceContact < 50) return null;
 
-  const client = new Anthropic({ apiKey });
-
   try {
-    const response = await client.messages.create({
+    const response = await getClient().messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 512,
       system: PROACTIVE_SYSTEM,
@@ -356,10 +356,8 @@ export async function adlerProactiveCheck(): Promise<string | null> {
 // ── Daily briefing generation ─────────────────────────────────────────────────
 
 export async function generateBriefing(): Promise<void> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) return;
+  if (!process.env.ANTHROPIC_API_KEY) return;
 
-  const client = new Anthropic({ apiKey });
   const s = getState();
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
@@ -394,7 +392,7 @@ Respond with JSON only:
 }`;
 
   try {
-    const response = await client.messages.create({
+    const response = await getClient().messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 512,
       messages: [{ role: 'user', content: prompt }],

@@ -3,7 +3,7 @@ services:
     name: atlas-api
     env: node
     region: oregon
-    plan: free
+    plan: standard
     buildCommand: npm install && npm run build:server
     startCommand: npm run start:server
     envVars:
@@ -25,9 +25,9 @@ services:
         value: https://atlas-api-fdlq.onrender.com/api/outlook/callback
       - key: MICROSOFT_CLIENT_SECRET
         sync: false
-      - key: UPSTASH_REDIS_URL
+      - key: UPSTASH_REDIS_REST_URL
         sync: false
-      - key: UPSTASH_REDIS_TOKEN
+      - key: UPSTASH_REDIS_REST_TOKEN
         sync: false
 
   - type: web

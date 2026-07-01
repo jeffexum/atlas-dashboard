@@ -300,7 +300,7 @@ export async function loadPersistedState(): Promise<void> {
       console.log('No saved state in Redis — using seed data');
     }
   } catch (err) {
-    console.error('State load error (using seed):', err);
+    console.error('State load error (keeping current state):', err);
   }
 }
 

@@ -146,6 +146,53 @@ app.get('/api/outlook/status', (_req: Request, res: Response) => {
   res.json({ authenticated: isAuthenticated() });
 });
 
+app.post('/api/drafts/reply', async (req: Request, res: Response) => {
+  const { commId } = req.body as { commId: string };
+  const s = getState();
+  const comm = s.comms.find((c) => c.id === commId);
+  if (!comm) { res.status(404).json({ error: 'comm not found' }); return; }
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) { res.status(503).json({ error: 'ANTHROPIC_API_KEY not configured' }); return; }
+
+  const Anthropic = (await import('@anthropic-ai/sdk')).default;
+  const client = new Anthropic({ apiKey });
+
+  const profileSection = s.userProfile
+    ? `\n\nUSER PROFILE (communication style, company context):\n${s.userProfile}`
+    : '';
+
+  const prompt = `You are drafting an email reply on behalf of Jeff Williams, CEO of Exum Instruments.${profileSection}
+
+EMAIL TO REPLY TO:
+From: ${comm.who}
+Subject: ${comm.subject}
+Preview: ${comm.preview}
+
+Write a reply that matches Jeff's communication style exactly — short, casual, direct, "Cheers, Jeff" sign-off. 1-4 sentences maximum. No subject line. Just the body text.`;
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 512,
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  const textBlock = response.content.find((b) => b.type === 'text');
+  const text = textBlock?.type === 'text' ? textBlock.text : `Hi ${comm.who.split(' ')[0]}, thanks for reaching out. Cheers, Jeff`;
+
+  const draft = {
+    id: `d-${Date.now()}`,
+    to: comm.who,
+    re: comm.subject,
+    text,
+    status: 'ready' as const,
+  };
+
+  setState({ drafts: [...s.drafts, draft] });
+  await persistNow();
+  res.json({ ok: true, draft });
+});
+
 app.post('/api/outlook/learn', async (_req: Request, res: Response) => {
   if (!isAuthenticated()) {
     res.status(401).json({ error: 'Not authenticated', authUrl: '/api/outlook/auth' });

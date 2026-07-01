@@ -104,9 +104,21 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
     URL.revokeObjectURL(url);
   }
 
-  function handleDraftReply(commId: string) {
-    draftReplyForComm(commId);
+  async function handleDraftReply(commId: string) {
     setDraftedId(commId);
+    try {
+      const res = await fetch(`${API_URL}/api/drafts/reply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ commId }),
+      });
+      if (!res.ok) {
+        // fallback to local template
+        draftReplyForComm(commId);
+      }
+    } catch {
+      draftReplyForComm(commId);
+    }
     setTimeout(() => setDraftedId(null), 1500);
   }
 

@@ -51,25 +51,38 @@ function routeAgent(message: string, hint?: string): AgentName {
 
 function buildStateContext(s: ServerState): string {
   const todayTasks = s.tasks.filter((t) => t.column === 'today');
-  const p1Tasks = todayTasks.filter((t) => t.priority === 'p1');
+  const upcomingTasks = s.tasks.filter((t) => t.column === 'upcoming');
   const openComms = s.comms.filter((c) => c.status === 'open');
-  const habitsLogged = s.habits.filter((h) => h.completedToday).length;
   const activeGoals = s.goals.filter((g) => g.pct < 100);
-  const nextEvent = s.calEvents
-    .filter((e) => e.date === 29)
-    .sort((a, b) => a.start - b.start)[0];
+  const nextEvent = s.calEvents.sort((a, b) => a.start - b.start)[0];
 
-  const lines = [
-    `Tasks today: ${todayTasks.length} total, ${p1Tasks.length} P1 (${p1Tasks.map((t) => `"${t.title}"`).join(', ')})`,
-    `Inbox: ${openComms.length} open messages`,
-    `Habits: ${habitsLogged}/${s.habits.length} logged today`,
-    `Active goals: ${activeGoals.map((g) => `${g.name} ${g.pct}%`).join(', ')}`,
-    nextEvent
-      ? `Next calendar event: ${nextEvent.title} at ${nextEvent.start % 1 === 0 ? nextEvent.start + ':00' : Math.floor(nextEvent.start) + ':30'}am`
-      : 'No more events today',
-  ];
+  const taskLines = [...todayTasks, ...upcomingTasks].map(
+    (t) => `  [${t.id}] ${t.priority.toUpperCase()} ${t.column}: ${t.title}${t.done ? ' (done)' : ''}`
+  );
 
-  return lines.join('\n');
+  const habitLines = s.habits.map(
+    (h) => `  [${h.id}] ${h.name} — streak ${h.streak} — today: ${h.completedToday ? 'done' : 'pending'}`
+  );
+
+  const commLines = openComms.slice(0, 5).map(
+    (c) => `  [${c.id}] ${c.priority.toUpperCase()} from ${c.who}: ${c.subject}`
+  );
+
+  const goalLines = activeGoals.map(
+    (g) => `  [${g.id}] ${g.name} — ${g.pct}% (${g.current} / ${g.target})`
+  );
+
+  return [
+    `TASKS (use these exact IDs for move_task/toggle_task):`,
+    taskLines.join('\n') || '  none',
+    `\nHABITS (use these exact IDs for log_habit):`,
+    habitLines.join('\n'),
+    `\nINBOX (use these exact IDs for snooze_comm/add_todo_from_comm):`,
+    commLines.join('\n') || '  none',
+    `\nGOALS (use these exact IDs for update_goal):`,
+    goalLines.join('\n'),
+    nextEvent ? `\nNEXT EVENT: ${nextEvent.title} at ${Math.floor(nextEvent.start)}:${nextEvent.start % 1 ? '30' : '00'}` : '',
+  ].join('\n');
 }
 
 const TOOLS: Anthropic.Tool[] = [

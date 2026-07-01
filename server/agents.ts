@@ -3,6 +3,13 @@
 import Anthropic from '@anthropic-ai/sdk';
 import type { ServerState } from './state.js';
 import * as state from './state.js';
+import { persistNow } from './state.js';
+
+let _anthropic: Anthropic | null = null;
+function getClient(): Anthropic {
+  if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return _anthropic;
+}
 
 export interface AppliedAction {
   tool: string;
@@ -333,7 +340,7 @@ export async function runAgent(input: {
   state: ServerState;
 }): Promise<{ text: string; actions: AppliedAction[]; agent: string }> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey || apiKey === 'YOUR_ANTHROPIC_API_KEY_HERE') {
+  if (!apiKey) {
     return {
       text: 'AI agents not configured — add ANTHROPIC_API_KEY to your .env',
       actions: [],
@@ -362,11 +369,10 @@ When the user asks you to DO something (add a task, log a habit, create an event
 - After calling the tool, confirm in one short sentence what you did.
 - Keep ALL responses under 2 sentences. No lists, no numbered options.`;
 
-  const client = new Anthropic({ apiKey });
   const appliedActions: AppliedAction[] = [];
 
   try {
-    const response = await client.messages.create({
+    const response = await getClient().messages.create({
       model: 'claude-sonnet-4-6',
       max_tokens: 1024,
       system: systemPrompt,
@@ -375,13 +381,16 @@ When the user asks you to DO something (add a task, log a habit, create an event
     });
 
     // Apply any tool calls
+    let hadTools = false;
     for (const block of response.content) {
       if (block.type === 'tool_use') {
         const toolInput = block.input as Record<string, unknown>;
         applyToolCall(block.name, toolInput);
         appliedActions.push({ tool: block.name, input: toolInput });
+        hadTools = true;
       }
     }
+    if (hadTools) await persistNow();
 
     // Extract text response
     const textBlock = response.content.find((b) => b.type === 'text');

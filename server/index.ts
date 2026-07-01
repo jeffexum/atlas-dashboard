@@ -196,8 +196,9 @@ setInterval(() => {
   }
 }, 60_000);
 
-// Generate briefing on startup
-generateBriefing().catch(() => {});
+// Load persisted state then generate briefing
+import { loadPersistedState } from './state.js';
+loadPersistedState().then(() => generateBriefing()).catch(() => {});
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 

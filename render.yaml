@@ -25,6 +25,10 @@ services:
         value: https://atlas-api-fdlq.onrender.com/api/outlook/callback
       - key: MICROSOFT_CLIENT_SECRET
         sync: false
+      - key: UPSTASH_REDIS_URL
+        sync: false
+      - key: UPSTASH_REDIS_TOKEN
+        sync: false
 
   - type: web
     name: atlas-dashboard

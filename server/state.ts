@@ -250,6 +250,55 @@ let _state: ServerState = JSON.parse(JSON.stringify(seedState));
 type Listener = (state: ServerState) => void;
 const listeners: Listener[] = [];
 
+// ── Upstash Redis persistence ─────────────────────────────────────────────────
+
+const REDIS_URL = process.env.UPSTASH_REDIS_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_TOKEN;
+const STATE_KEY = 'atlas:state';
+
+async function redisFetch(path: string, options?: RequestInit): Promise<unknown> {
+  if (!REDIS_URL || !REDIS_TOKEN) return null;
+  const res = await fetch(`${REDIS_URL}${path}`, {
+    ...options,
+    headers: { Authorization: `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json', ...options?.headers },
+  });
+  return res.json();
+}
+
+let _persistTimer: ReturnType<typeof setTimeout> | null = null;
+
+function schedulePersist(): void {
+  if (_persistTimer) clearTimeout(_persistTimer);
+  _persistTimer = setTimeout(async () => {
+    try {
+      await redisFetch(`/set/${STATE_KEY}`, {
+        method: 'POST',
+        body: JSON.stringify(JSON.stringify(_state)),
+      });
+    } catch (err) {
+      console.error('State persist error:', err);
+    }
+  }, 500); // debounce — batch rapid updates
+}
+
+export async function loadPersistedState(): Promise<void> {
+  try {
+    const res = await redisFetch(`/get/${STATE_KEY}`) as { result: string | null };
+    if (res?.result) {
+      const saved = JSON.parse(res.result) as Partial<ServerState>;
+      // Merge saved over seed so new fields added in code still get defaults
+      _state = { ...JSON.parse(JSON.stringify(seedState)), ...saved };
+      console.log('State restored from Redis');
+    } else {
+      console.log('No saved state in Redis — using seed data');
+    }
+  } catch (err) {
+    console.error('State load error (using seed):', err);
+  }
+}
+
+// ── Core state API ────────────────────────────────────────────────────────────
+
 export function getState(): ServerState {
   return _state;
 }
@@ -257,6 +306,7 @@ export function getState(): ServerState {
 export function setState(partial: Partial<ServerState>): void {
   _state = { ..._state, ...partial };
   listeners.forEach((fn) => fn(_state));
+  schedulePersist();
 }
 
 export function subscribe(fn: Listener): () => void {

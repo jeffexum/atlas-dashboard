@@ -12,6 +12,7 @@ import Finances from '../screens/Finances';
 import Reading from '../screens/Reading';
 import IdeasJournal from '../screens/IdeasJournal';
 import Assistant from '../screens/Assistant';
+import Whiteboard from '../screens/Whiteboard';
 
 interface NavItem {
   id: Screen;
@@ -52,6 +53,7 @@ const NAV: NavGroup[] = [
     items: [
       { id: 'ideas', label: 'Ideas & Journal' },
       { id: 'reading', label: 'Reading' },
+      { id: 'whiteboard', label: 'Whiteboard' },
     ],
   },
 ];
@@ -85,6 +87,7 @@ export default function Shell({ screen, setScreen }: Props) {
     reading: { title: 'Reading', sub: '2 in progress' },
     ideas: { title: 'Ideas & Journal', sub: 'Your thinking space' },
     assistant: { title: 'Scout', sub: 'AI assistant · ready' },
+    whiteboard: { title: 'Whiteboard', sub: 'Think with your agents' },
   };
 
   const page = PAGE_TITLES[screen];
@@ -320,6 +323,7 @@ export default function Shell({ screen, setScreen }: Props) {
           {screen === 'reading' && <Reading setScreen={setScreen} />}
           {screen === 'ideas' && <IdeasJournal setScreen={setScreen} />}
           {screen === 'assistant' && <Assistant setScreen={setScreen} />}
+          {screen === 'whiteboard' && <Whiteboard setScreen={setScreen} />}
         </div>
 
         {/* AskBar */}

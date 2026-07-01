@@ -13,7 +13,8 @@ export type Screen =
   | 'finances'
   | 'reading'
   | 'ideas'
-  | 'assistant';
+  | 'assistant'
+  | 'whiteboard';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home');

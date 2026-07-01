@@ -45,71 +45,97 @@ CONTENT LIBRARY (rotate these — connect them to what's relevant in their dashb
 const ADLER_TOOLS: Anthropic.Tool[] = [
   {
     name: 'add_task',
-    description: 'Add a task to the dashboard',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        title: { type: 'string' },
-        priority: { type: 'string', enum: ['p1', 'p2', 'p3'] },
-        category: { type: 'string', enum: ['Work', 'Personal', 'Health'] },
-      },
-      required: ['title', 'priority', 'category'],
-    },
+    description: 'Add a new task to the dashboard',
+    input_schema: { type: 'object' as const, properties: { title: { type: 'string' }, priority: { type: 'string', enum: ['p1', 'p2', 'p3'] }, category: { type: 'string', enum: ['Work', 'Personal', 'Health'] } }, required: ['title', 'priority', 'category'] },
+  },
+  {
+    name: 'edit_task',
+    description: 'Edit an existing task title, priority, or category',
+    input_schema: { type: 'object' as const, properties: { id: { type: 'string' }, title: { type: 'string' }, priority: { type: 'string', enum: ['p1', 'p2', 'p3'] }, category: { type: 'string', enum: ['Work', 'Personal', 'Health'] } }, required: ['id'] },
+  },
+  {
+    name: 'delete_task',
+    description: 'Delete a task permanently',
+    input_schema: { type: 'object' as const, properties: { id: { type: 'string' } }, required: ['id'] },
+  },
+  {
+    name: 'toggle_task',
+    description: 'Mark a task done or undone',
+    input_schema: { type: 'object' as const, properties: { id: { type: 'string' } }, required: ['id'] },
+  },
+  {
+    name: 'move_task',
+    description: 'Move a task to today, upcoming, or done',
+    input_schema: { type: 'object' as const, properties: { id: { type: 'string' }, column: { type: 'string', enum: ['today', 'upcoming', 'done'] } }, required: ['id', 'column'] },
   },
   {
     name: 'log_habit',
     description: 'Mark a habit as completed today',
-    input_schema: {
-      type: 'object' as const,
-      properties: { id: { type: 'string' } },
-      required: ['id'],
-    },
+    input_schema: { type: 'object' as const, properties: { id: { type: 'string' } }, required: ['id'] },
   },
   {
     name: 'update_goal',
     description: 'Update goal progress percentage',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        id: { type: 'string' },
-        pct: { type: 'number' },
-      },
-      required: ['id', 'pct'],
-    },
+    input_schema: { type: 'object' as const, properties: { id: { type: 'string' }, pct: { type: 'number' } }, required: ['id', 'pct'] },
+  },
+  {
+    name: 'add_calendar_event',
+    description: 'Add a new calendar event',
+    input_schema: { type: 'object' as const, properties: { title: { type: 'string' }, start: { type: 'number', description: 'Start hour as decimal (e.g. 9.5 = 9:30am)' }, duration: { type: 'number', description: 'Duration in hours' }, category: { type: 'string' }, date: { type: 'number', description: 'Day of month' } }, required: ['title', 'start', 'duration', 'category', 'date'] },
+  },
+  {
+    name: 'snooze_comm',
+    description: 'Snooze an inbox message',
+    input_schema: { type: 'object' as const, properties: { commId: { type: 'string' } }, required: ['commId'] },
+  },
+  {
+    name: 'add_todo_from_comm',
+    description: 'Create a task from an inbox message',
+    input_schema: { type: 'object' as const, properties: { commId: { type: 'string' } }, required: ['commId'] },
+  },
+  {
+    name: 'accept_action',
+    description: 'Accept a proposed action from the dashboard',
+    input_schema: { type: 'object' as const, properties: { actionId: { type: 'string' } }, required: ['actionId'] },
+  },
+  {
+    name: 'add_idea',
+    description: 'Add an idea to the ideas board',
+    input_schema: { type: 'object' as const, properties: { title: { type: 'string' }, body: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } } }, required: ['title', 'body', 'tags'] },
+  },
+  {
+    name: 'add_journal_entry',
+    description: 'Add a journal entry',
+    input_schema: { type: 'object' as const, properties: { text: { type: 'string' } }, required: ['text'] },
   },
   {
     name: 'update_adler_notes',
     description: 'Update your persistent notes about the user — things to remember across conversations',
-    input_schema: {
-      type: 'object' as const,
-      properties: {
-        notes: { type: 'string', description: 'Full updated notes (replaces existing)' },
-      },
-      required: ['notes'],
-    },
-  },
-  {
-    name: 'add_journal_entry',
-    description: 'Add a journal entry on behalf of the user if they share something worth recording',
-    input_schema: {
-      type: 'object' as const,
-      properties: { text: { type: 'string' } },
-      required: ['text'],
-    },
+    input_schema: { type: 'object' as const, properties: { notes: { type: 'string', description: 'Full updated notes (replaces existing)' } }, required: ['notes'] },
   },
 ];
 
 function applyTool(name: string, input: Record<string, unknown>): void {
+  const s = getState();
   switch (name) {
     case 'add_task':
-      state.addTask({
-        title: input.title as string,
-        priority: input.priority as 'p1' | 'p2' | 'p3',
-        category: input.category as string,
-        done: false,
-        column: 'today',
-        agentBadge: 'Adler',
+      state.addTask({ title: input.title as string, priority: input.priority as 'p1' | 'p2' | 'p3', category: input.category as string, done: false, column: 'today', agentBadge: 'Adler' });
+      break;
+    case 'edit_task':
+      state.editTask(input.id as string, {
+        ...(input.title ? { title: input.title as string } : {}),
+        ...(input.priority ? { priority: input.priority as 'p1' | 'p2' | 'p3' } : {}),
+        ...(input.category ? { category: input.category as string } : {}),
       });
+      break;
+    case 'delete_task':
+      state.deleteTask(input.id as string);
+      break;
+    case 'toggle_task':
+      state.toggleTask(input.id as string);
+      break;
+    case 'move_task':
+      state.moveTask(input.id as string, input.column as 'today' | 'upcoming' | 'done');
       break;
     case 'log_habit':
       state.toggleHabitToday(input.id as string);
@@ -117,20 +143,33 @@ function applyTool(name: string, input: Record<string, unknown>): void {
     case 'update_goal':
       state.updateGoalProgress(input.id as string, input.pct as number);
       break;
+    case 'add_calendar_event': {
+      const categoryColors: Record<string, string> = { Work: 'var(--blue)', Focus: 'var(--violet)', Personal: 'var(--warm)', Health: 'var(--accent)' };
+      state.addCalEvent({ title: input.title as string, start: input.start as number, duration: input.duration as number, category: input.category as string, date: (input.date as number) || new Date().getDate(), color: categoryColors[input.category as string] || 'var(--blue)' });
+      break;
+    }
+    case 'snooze_comm':
+      state.snoozeComm(input.commId as string);
+      break;
+    case 'add_todo_from_comm':
+      state.addTodoFromComm(input.commId as string);
+      break;
+    case 'accept_action':
+      state.acceptAction(input.actionId as string);
+      break;
+    case 'add_idea': {
+      const colors = ['var(--blue)', 'var(--accent)', 'var(--violet)', 'var(--warm)', 'var(--p2)'];
+      setState({ ideas: [{ id: `i-${Date.now()}`, title: input.title as string, body: input.body as string, tags: input.tags as string[], color: colors[s.ideas.length % colors.length] }, ...s.ideas] });
+      break;
+    }
+    case 'add_journal_entry': {
+      const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      setState({ journalEntries: [{ id: `j-${Date.now()}`, date, text: input.text as string }, ...s.journalEntries] });
+      break;
+    }
     case 'update_adler_notes':
       setState({ adlerNotes: input.notes as string });
       break;
-    case 'add_journal_entry': {
-      const s = getState();
-      const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      setState({
-        journalEntries: [
-          { id: `j-${Date.now()}`, date, text: input.text as string },
-          ...s.journalEntries,
-        ],
-      });
-      break;
-    }
   }
 }
 

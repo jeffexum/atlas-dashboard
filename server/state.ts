@@ -187,10 +187,11 @@ function schedulePersist(): void {
 export async function persistNow(): Promise<void> {
   if (_persistTimer) { clearTimeout(_persistTimer); _persistTimer = null; }
   try {
-    await redisFetch(`/set/${STATE_KEY}`, {
+    const result = await redisFetch(`/set/${STATE_KEY}`, {
       method: 'POST',
       body: JSON.stringify(JSON.stringify(_state)),
-    });
+    }) as { result: string } | null;
+    console.log(`State persisted: ${_state.tasks.length} tasks, result=${JSON.stringify(result)}`);
   } catch (err) {
     console.error('State persist error:', err);
   }
@@ -207,7 +208,7 @@ export async function loadPersistedState(): Promise<void> {
       if (typeof _state.adlerNotes === 'string') {
         _state.adlerNotes = _state.adlerNotes ? { notes: _state.adlerNotes as unknown as string } : {};
       }
-      console.log('State restored from Redis');
+      console.log(`State restored from Redis: ${_state.tasks.length} tasks`);
     } else {
       console.log('No saved state in Redis — using seed data');
     }

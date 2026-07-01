@@ -307,13 +307,9 @@ import { loadPersistedState, migrateLegacyState } from './state.js';
 loadPersistedState()
   .then(() => migrateLegacyState())
   .then(() => {
-    // One-time cleanup: strip stray slash characters from calNote
-    const s = getState();
-    const cleaned = s.calNote.replace(/\/+/g, '').trim();
-    if (cleaned !== s.calNote) {
-      setState({ calNote: cleaned });
-      persistNow().catch(() => {});
-    }
+    // Clear corrupt calNote (accumulated JSON-encoding garbage)
+    setState({ calNote: '' });
+    persistNow().catch(() => {});
   })
   .then(() => loadOutlookToken())
   .then(() => generateBriefing())

@@ -309,7 +309,7 @@ export function getState(): ServerState {
 export function setState(partial: Partial<ServerState>): void {
   _state = { ..._state, ...partial };
   listeners.forEach((fn) => fn(_state));
-  schedulePersist();
+  persistNow(); // fire-and-forget — no debounce, every change goes to Redis
 }
 
 export function subscribe(fn: Listener): () => void {

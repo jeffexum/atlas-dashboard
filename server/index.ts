@@ -42,6 +42,22 @@ app.post('/api/state', (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+app.patch('/api/tasks/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const s = getState();
+  const tasks = s.tasks.map((t) => t.id === id ? { ...t, ...req.body } : t);
+  setState({ tasks });
+  res.json({ ok: true });
+});
+
+app.delete('/api/tasks/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const s = getState();
+  const tasks = s.tasks.filter((t) => t.id !== id);
+  setState({ tasks });
+  res.json({ ok: true });
+});
+
 app.post('/api/ask', async (req: Request, res: Response) => {
   const { message, agentHint, state: clientState } = req.body;
   if (!message) {

@@ -384,13 +384,23 @@ export const useStore = create<StoreState>((set) => ({
       ),
     })),
 
-  editTask: (id, updates) =>
+  editTask: (id, updates) => {
     set((state) => ({
       tasks: state.tasks.map((t) => t.id === id ? { ...t, ...updates } : t),
-    })),
+    }));
+    const API = import.meta.env.VITE_API_URL || '';
+    fetch(`${API}/api/tasks/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
+    }).catch(() => {});
+  },
 
-  deleteTask: (id) =>
-    set((state) => ({ tasks: state.tasks.filter((t) => t.id !== id) })),
+  deleteTask: (id) => {
+    set((state) => ({ tasks: state.tasks.filter((t) => t.id !== id) }));
+    const API = import.meta.env.VITE_API_URL || '';
+    fetch(`${API}/api/tasks/${id}`, { method: 'DELETE' }).catch(() => {});
+  },
 
   toggleHabitToday: (id) =>
     set((state) => ({

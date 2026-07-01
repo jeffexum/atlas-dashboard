@@ -291,6 +291,10 @@ export async function loadPersistedState(): Promise<void> {
       const saved = JSON.parse(res.result) as Partial<ServerState>;
       // Merge saved over seed so new fields added in code still get defaults
       _state = { ...JSON.parse(JSON.stringify(seedState)), ...saved };
+      // Migrate adlerNotes from old string format to Record
+      if (typeof _state.adlerNotes === 'string') {
+        _state.adlerNotes = _state.adlerNotes ? { notes: _state.adlerNotes as unknown as string } : {};
+      }
       console.log('State restored from Redis');
     } else {
       console.log('No saved state in Redis — using seed data');

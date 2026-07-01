@@ -273,9 +273,26 @@ export async function syncCalendar(): Promise<void> {
 
   const colorPalette = ['var(--blue)', 'var(--violet)', 'var(--accent)', 'var(--warm)', 'var(--p1)'];
 
+  const TZ = 'America/Denver';
+
+  // Graph returns dateTime without offset — parse in event's own timezone (MST/MDT)
+  function parseInTz(dtStr: string, tzStr?: string): Date {
+    const tz = tzStr || TZ;
+    // Append a fake UTC marker so Date.parse works, then adjust using Intl
+    const utcDate = new Date(dtStr.endsWith('Z') ? dtStr : dtStr + 'Z');
+    // Use Intl to get wall-clock parts in the target timezone
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    }).formatToParts(utcDate);
+    const get = (t: string) => parseInt(parts.find((p) => p.type === t)?.value || '0', 10);
+    return new Date(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
+  }
+
   const calEvents = (data.value || []).map((evt, i) => {
-    const startDate = new Date(evt.start?.dateTime || '');
-    const endDate = new Date(evt.end?.dateTime || '');
+    const startDate = parseInTz(evt.start?.dateTime || '', evt.start?.timeZone);
+    const endDate = parseInTz(evt.end?.dateTime || '', evt.end?.timeZone);
     const startHour = startDate.getHours() + startDate.getMinutes() / 60;
     const durationHours = (endDate.getTime() - startDate.getTime()) / 3600000;
     return {
@@ -286,6 +303,8 @@ export async function syncCalendar(): Promise<void> {
       color: colorPalette[i % colorPalette.length],
       category: 'Work',
       date: startDate.getDate(),
+      month: startDate.getMonth() + 1,
+      year: startDate.getFullYear(),
     };
   });
 

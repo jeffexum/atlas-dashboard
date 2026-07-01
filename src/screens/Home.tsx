@@ -93,8 +93,16 @@ export default function Home({ setScreen }: HomeProps) {
   const todayTasks = tasks.filter((t) => t.column === 'today').slice(0, 4);
   const topHabits = habits.slice(0, 3);
   const readingBooks = books.filter((b) => b.status === 'reading');
+  const todayYear = now.getFullYear();
   const todayEvents = calEvents
-    .filter((e) => e.date === todayDate)
+    .filter((e) => {
+      const em = (e as { month?: number }).month;
+      const ey = (e as { year?: number }).year;
+      if (typeof em === 'number' && typeof ey === 'number') {
+        return em === todayMonth + 1 && ey === todayYear && e.date === todayDate;
+      }
+      return e.date === todayDate;
+    })
     .sort((a, b) => a.start - b.start)
     .slice(0, 4);
 

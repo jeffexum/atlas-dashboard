@@ -40,10 +40,13 @@ const START_HOUR = 7;
 const END_HOUR = 22;
 const TOTAL_HOURS = END_HOUR - START_HOUR;
 
-// June 2026 calendar data
-const daysInJune = 30;
-const june1DayOfWeek = 1; // Monday (0=Sun, 1=Mon)
-const eventDays = new Set([9, 15, 22, 29]);
+// Dynamic current month
+const _now = new Date();
+const _curYear = _now.getFullYear();
+const _curMonth = _now.getMonth(); // 0-indexed
+const daysInMonth = new Date(_curYear, _curMonth + 1, 0).getDate();
+const month1DayOfWeek = new Date(_curYear, _curMonth, 1).getDay(); // 0=Sun
+const MONTH_NAME = _now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
 const COLOR_OPTIONS = [
   { label: 'Blue', value: 'var(--blue)', hex: '#60a5fa' },
@@ -59,7 +62,7 @@ export default function Calendar() {
   const updateCalNote = useStore((s) => s.updateCalNote);
   const addTask = useStore((s) => s.addTask);
 
-  const [selectedDay, setSelectedDay] = useState(29);
+  const [selectedDay, setSelectedDay] = useState(_now.getDate());
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
   // Add event form state
@@ -76,16 +79,26 @@ export default function Calendar() {
   const [newTodoTitle, setNewTodoTitle] = useState('');
   const [newTodoPriority, setNewTodoPriority] = useState<'p1' | 'p2' | 'p3'>('p3');
 
-  // Now line at 10:30am
-  const nowTop = (10.5 - START_HOUR) * HOUR_HEIGHT;
+  // Now line — real current time
+  const nowTop = (_now.getHours() + _now.getMinutes() / 60 - START_HOUR) * HOUR_HEIGHT;
 
   // Build calendar grid
   const calendarDays: (number | null)[] = [];
-  for (let i = 0; i < june1DayOfWeek; i++) calendarDays.push(null);
-  for (let d = 1; d <= daysInJune; d++) calendarDays.push(d);
+  for (let i = 0; i < month1DayOfWeek; i++) calendarDays.push(null);
+  for (let d = 1; d <= daysInMonth; d++) calendarDays.push(d);
   while (calendarDays.length % 7 !== 0) calendarDays.push(null);
 
-  const dayEvents = calEvents.filter((e) => e.date === selectedDay);
+  const monthEvents = calEvents.filter((e) => {
+    const em = (e as { month?: number }).month;
+    const ey = (e as { year?: number }).year;
+    if (typeof em === 'number' && typeof ey === 'number') {
+      return em === _curMonth + 1 && ey === _curYear;
+    }
+    return true; // manually added events without month/year fall through
+  });
+
+  const eventDays = new Set(monthEvents.map((e) => e.date));
+  const dayEvents = monthEvents.filter((e) => e.date === selectedDay);
 
   function handleTimelineClick(e: React.MouseEvent<HTMLDivElement>) {
     const target = e.target as HTMLElement;
@@ -113,7 +126,9 @@ export default function Calendar() {
       color: newEventColor,
       category: newEventCategory,
       date: selectedDay,
-    });
+      month: _curMonth + 1,
+      year: _curYear,
+    } as Parameters<typeof addCalEvent>[0]);
     setAddEventOpen(false);
     setNewEventTitle('');
   }
@@ -133,7 +148,7 @@ export default function Calendar() {
     setShowAddTodo(false);
   }
 
-  const dayLabel = selectedDay === 29 ? 'Monday, June 29' : `June ${selectedDay}`;
+  const dayLabel = new Date(_curYear, _curMonth, selectedDay).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
   return (
     <div
@@ -571,7 +586,7 @@ export default function Calendar() {
               marginBottom: 10,
             }}
           >
-            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>June 2026</span>
+            <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{MONTH_NAME}</span>
             <div style={{ display: 'flex', gap: 8 }}>
               <span style={{ fontSize: 13, color: 'var(--mut)', cursor: 'pointer', userSelect: 'none' }}>‹</span>
               <span style={{ fontSize: 13, color: 'var(--mut)', cursor: 'pointer', userSelect: 'none' }}>›</span>

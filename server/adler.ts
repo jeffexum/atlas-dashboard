@@ -180,42 +180,54 @@ function buildContext(): string {
   const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
-  const todayTasks = s.tasks.filter((t) => t.column === 'today');
-  const doneTasks = todayTasks.filter((t) => t.done);
-  const pendingTasks = todayTasks.filter((t) => !t.done);
-  const p1Pending = pendingTasks.filter((t) => t.priority === 'p1');
-
-  const habitsDone = s.habits.filter((h) => h.completedToday);
-  const habitsPending = s.habits.filter((h) => !h.completedToday);
-
   const recentMemory = s.adlerMemory.slice(-12);
+
+  const taskLines = s.tasks.map((t) =>
+    `  [${t.id}] ${t.priority.toUpperCase()} ${t.column}${t.done ? ' ✓' : ''} | ${t.category} | "${t.title}"`
+  );
+
+  const habitLines = s.habits.map((h) =>
+    `  [${h.id}] ${h.completedToday ? '✓' : '○'} ${h.name} — ${h.streak}🔥 streak (${h.rate}% rate)`
+  );
+
+  const commLines = s.comms.filter((c) => c.status === 'open').map((c) =>
+    `  [${c.id}] ${c.priority.toUpperCase()} from ${c.who}: "${c.subject}"`
+  );
+
+  const goalLines = s.goals.map((g) =>
+    `  [${g.id}] ${g.name}: ${g.pct}% — ${g.current} / ${g.target} (due ${g.deadlineShort})`
+  );
+
+  const actionLines = s.proposedActions.filter((a) => a.status === 'pending').map((a) =>
+    `  [${a.id}] ${a.text} — ${a.meta}`
+  );
 
   return `
 CURRENT TIME: ${timeStr} on ${dateStr}
+TIME OF DAY: ${hour < 9 ? 'Early morning' : hour < 12 ? 'Morning' : hour < 14 ? 'Midday' : hour < 17 ? 'Afternoon' : hour < 20 ? 'Evening' : 'Night'}
 
-TASKS TODAY:
-  Done (${doneTasks.length}): ${doneTasks.map((t) => `"${t.title}"`).join(', ') || 'none'}
-  Pending (${pendingTasks.length}): ${pendingTasks.map((t) => `[${t.id}] ${t.priority.toUpperCase()} "${t.title}"`).join(', ') || 'none'}
-  ${p1Pending.length > 0 ? `⚠ ${p1Pending.length} P1 tasks still open` : ''}
+TASKS (use exact IDs for move_task / toggle_task / edit_task / delete_task):
+${taskLines.join('\n') || '  none'}
 
-HABITS:
-  Done: ${habitsDone.map((h) => h.name).join(', ') || 'none'}
-  Pending: ${habitsPending.map((h) => `[${h.id}] ${h.name} (${h.streak}🔥 streak)`).join(', ') || 'none'}
+HABITS (use exact IDs for log_habit):
+${habitLines.join('\n')}
 
-GOALS:
-  ${s.goals.map((g) => `[${g.id}] ${g.name}: ${g.pct}% — ${g.current}/${g.target}`).join('\n  ')}
+INBOX (use exact IDs for snooze_comm / add_todo_from_comm):
+${commLines.join('\n') || '  none'}
 
-INBOX: ${s.comms.filter((c) => c.status === 'open').length} open messages
+GOALS (use exact IDs for update_goal):
+${goalLines.join('\n')}
+
+PROPOSED ACTIONS (use exact IDs for accept_action):
+${actionLines.join('\n') || '  none pending'}
 
 CURRENTLY READING: ${s.books.filter((b) => b.status === 'reading').map((b) => `${b.title} by ${b.author} (${b.pct}%)`).join(', ') || 'nothing'}
 
-YOUR NOTES ON THIS USER:
+YOUR PERSISTENT NOTES ON THIS USER:
 ${s.adlerNotes || '(none yet — update these as you learn about them)'}
 
 RECENT CONVERSATION:
 ${recentMemory.map((m) => `${m.role === 'user' ? 'User' : 'Adler'}: ${m.content}`).join('\n') || '(no history yet)'}
-
-TIME CONTEXT: ${hour < 9 ? 'Early morning' : hour < 12 ? 'Morning' : hour < 14 ? 'Midday' : hour < 17 ? 'Afternoon' : hour < 20 ? 'Evening' : 'Night'}
 `.trim();
 }
 

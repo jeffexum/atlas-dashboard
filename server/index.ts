@@ -219,3 +219,13 @@ loadPersistedState().then(() => generateBriefing()).catch(() => {});
 app.listen(PORT, () => {
   console.log(`Atlas API running on http://localhost:${PORT}`);
 });
+
+// Flush state to Redis before shutdown so in-flight changes aren't lost
+async function shutdown() {
+  console.log('Shutting down — flushing state to Redis...');
+  await persistNow();
+  console.log('State flushed. Exiting.');
+  process.exit(0);
+}
+process.on('SIGTERM', shutdown);
+process.on('SIGINT', shutdown);

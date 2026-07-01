@@ -53,6 +53,8 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
   const draftReplyForComm = useStore((s) => s.draftReplyForComm);
 
   const [syncing, setSyncing] = useState(false);
+  const [learning, setLearning] = useState(false);
+  const userProfile = useStore((s) => s.userProfile);
   const [draftedId, setDraftedId] = useState<string | null>(null);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
@@ -87,6 +89,19 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
   async function handleSync() {
     setSyncing(true);
     try { await fetch(`${API_URL}/api/outlook/sync`); } finally { setSyncing(false); }
+  }
+
+  async function handleLearn() {
+    setLearning(true);
+    try { await fetch(`${API_URL}/api/outlook/learn`, { method: 'POST' }); } finally { setLearning(false); }
+  }
+
+  function handleDownloadProfile() {
+    const blob = new Blob([userProfile], { type: 'text/markdown' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'user-profile.md'; a.click();
+    URL.revokeObjectURL(url);
   }
 
   function handleDraftReply(commId: string) {
@@ -126,9 +141,17 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
           >
             {comms.length}
           </span>
-          <button onClick={handleSync} disabled={syncing} style={{ ...smallBtn, marginLeft: 'auto', opacity: syncing ? 0.6 : 1 }}>
-            {syncing ? 'Syncing…' : '↻ Sync'}
-          </button>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: '6px' }}>
+            <button onClick={handleSync} disabled={syncing} style={{ ...smallBtn, opacity: syncing ? 0.6 : 1 }}>
+              {syncing ? 'Syncing…' : '↻ Sync'}
+            </button>
+            <button onClick={handleLearn} disabled={learning} style={{ ...smallBtn, opacity: learning ? 0.6 : 1 }}>
+              {learning ? 'Learning…' : '✦ Learn my style'}
+            </button>
+            {userProfile && (
+              <button onClick={handleDownloadProfile} style={smallBtn}>⬇ Profile.md</button>
+            )}
+          </div>
         </div>
 
         {/* Scout callout */}

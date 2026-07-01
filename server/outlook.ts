@@ -1,6 +1,13 @@
 // server/outlook.ts — Microsoft Graph OAuth2 + mail/calendar sync
 
+import Anthropic from '@anthropic-ai/sdk';
 import { getState, setState } from './state.js';
+
+let _anthropic: Anthropic | null = null;
+function getClient(): Anthropic {
+  if (!_anthropic) _anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  return _anthropic;
+}
 
 const CLIENT_ID = process.env.MICROSOFT_CLIENT_ID || '';
 const CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET || '';
@@ -43,6 +50,62 @@ async function loadToken(): Promise<void> {
 }
 
 export { loadToken as loadOutlookToken };
+
+export async function learnUserProfile(): Promise<string> {
+  if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
+
+  // Fetch last 30 sent emails (body preview + subject + recipients)
+  const sentData = await graphGet(
+    '/me/mailFolders/SentItems/messages?$top=30&$orderby=sentDateTime%20desc&$select=id,subject,toRecipients,sentDateTime,body'
+  ) as { value: GraphMessageFull[] };
+
+  // Fetch last 20 inbox emails for context on incoming tone/topics
+  const inboxData = await graphGet(
+    '/me/mailFolders/inbox/messages?$top=20&$orderby=receivedDateTime%20desc&$select=id,subject,from,receivedDateTime,bodyPreview'
+  ) as { value: GraphMessage[] };
+
+  const sentSnippets = (sentData.value || []).map((m) => {
+    const to = (m.toRecipients || []).map((r) => r.emailAddress?.name || r.emailAddress?.address).join(', ');
+    const body = m.body?.content
+      ? m.body.content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 400)
+      : '';
+    return `To: ${to}\nSubject: ${m.subject || '(no subject)'}\n${body}`;
+  }).join('\n\n---\n\n');
+
+  const inboxSnippets = (inboxData.value || []).map((m) =>
+    `From: ${m.from?.emailAddress?.name || m.from?.emailAddress?.address}\nSubject: ${m.subject || '(no subject)'}\nPreview: ${m.bodyPreview?.slice(0, 200) || ''}`
+  ).join('\n\n---\n\n');
+
+  const prompt = `You are analyzing a professional's email history to build a communication profile.
+
+SENT EMAILS (last 30):
+${sentSnippets || '(none available)'}
+
+RECEIVED EMAILS (last 20):
+${inboxSnippets || '(none available)'}
+
+Based on these emails, write a detailed markdown profile covering:
+
+1. **Company & Role** — What company does this person work at? What is their role/title? What does the company do?
+2. **Communication Style** — How do they write emails? Tone (formal/casual), length, structure, sign-off phrases they use, any recurring language patterns.
+3. **Key Relationships** — Who do they email most? Internal team members vs. external clients/partners?
+4. **Topics & Themes** — What are the recurring subjects, projects, or business areas they deal with?
+5. **Draft Reply Guidelines** — Specific guidance for drafting replies on their behalf: how to open, how to close, what to avoid, typical response length.
+
+Write in markdown. Be specific — use actual names, phrases, and examples you observe in the emails. This profile will be used to draft emails on their behalf.`;
+
+  const response = await getClient().messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 2048,
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  const text = response.content.find((b) => b.type === 'text');
+  const profile = text?.type === 'text' ? text.text : '';
+
+  setState({ userProfile: profile });
+  return profile;
+}
 
 export function getAuthUrl(): string {
   const params = new URLSearchParams({
@@ -128,6 +191,16 @@ async function graphGet(path: string): Promise<unknown> {
   });
   if (!res.ok) throw new Error(`Graph API ${path} returned ${res.status}`);
   return res.json();
+}
+
+interface GraphMessageFull {
+  id: string;
+  subject?: string;
+  from?: { emailAddress?: { name?: string; address?: string } };
+  toRecipients?: { emailAddress?: { name?: string; address?: string } }[];
+  receivedDateTime?: string;
+  body?: { content?: string; contentType?: string };
+  inferenceClassification?: 'focused' | 'other';
 }
 
 interface GraphMessage {

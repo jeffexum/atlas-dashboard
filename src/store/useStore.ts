@@ -124,6 +124,7 @@ interface StoreState {
   calNote: string;
   briefingText: string;
   briefingNudges: string[];
+  userProfile: string;
 
   acceptAction: (id: string) => void;
   dismissAction: (id: string) => void;
@@ -169,6 +170,7 @@ export const useStore = create<StoreState>((set) => ({
   calNote: '',
   briefingText: '',
   briefingNudges: [],
+  userProfile: '',
 
   acceptAction: (id) =>
     set((state) => {

@@ -6,7 +6,7 @@ import cors from 'cors';
 import { getState, setState, persistNow } from './state.js';
 import { runAgent } from './agents.js';
 import { adlerProactiveCheck, generateBriefing } from './adler.js';
-import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken } from './outlook.js';
+import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile } from './outlook.js';
 import { createTelegramBot, activeChatIds, sendMorningBriefing, sendHabitReminder } from './telegram.js';
 
 const app = express();
@@ -144,6 +144,20 @@ app.get('/api/outlook/sync', async (_req: Request, res: Response) => {
 
 app.get('/api/outlook/status', (_req: Request, res: Response) => {
   res.json({ authenticated: isAuthenticated() });
+});
+
+app.post('/api/outlook/learn', async (_req: Request, res: Response) => {
+  if (!isAuthenticated()) {
+    res.status(401).json({ error: 'Not authenticated', authUrl: '/api/outlook/auth' });
+    return;
+  }
+  try {
+    const profile = await learnUserProfile();
+    res.json({ ok: true, profile });
+  } catch (err) {
+    console.error('Profile learn error:', err);
+    res.status(500).json({ error: (err as Error).message });
+  }
 });
 
 // ── Telegram webhook ─────────────────────────────────────────────────────────

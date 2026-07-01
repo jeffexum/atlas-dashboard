@@ -127,6 +127,7 @@ export interface ServerState {
   briefingText: string;
   briefingNudges: string[];
   briefingGeneratedAt: number;
+  userProfile: string;
 }
 
 function makeHeatmap(rate: number, name: string): boolean[] {
@@ -154,6 +155,7 @@ const seedState: ServerState = {
   briefingText: '',
   briefingNudges: [],
   briefingGeneratedAt: 0,
+  userProfile: '',
 };
 
 // Deep clone seed so we can reset if needed
@@ -206,6 +208,7 @@ const KEYS = {
   briefingText: 'atlas:briefingText',
   briefingNudges: 'atlas:briefingNudges',
   briefingGeneratedAt: 'atlas:briefingGeneratedAt',
+  userProfile: 'atlas:userProfile',
 } as const;
 
 let _persistTimer: ReturnType<typeof setTimeout> | null = null;
@@ -237,6 +240,7 @@ export async function persistNow(): Promise<void> {
       redisSet(KEYS.briefingText, _state.briefingText),
       redisSet(KEYS.briefingNudges, _state.briefingNudges),
       redisSet(KEYS.briefingGeneratedAt, _state.briefingGeneratedAt),
+      redisSet(KEYS.userProfile, _state.userProfile),
     ]);
     console.log(`State persisted: ${_state.tasks.length} tasks`);
   } catch (err) {
@@ -254,7 +258,7 @@ export async function loadPersistedState(): Promise<void> {
       tasks, comms, drafts, proposedActions, habits, goals, books,
       highlights, ideas, journalEntries, calEvents, calNote,
       adlerNotes, adlerMemory, adlerLastContact,
-      briefingText, briefingNudges, briefingGeneratedAt,
+      briefingText, briefingNudges, briefingGeneratedAt, userProfile,
     ] = await Promise.all([
       redisGet<ServerState['tasks']>(KEYS.tasks),
       redisGet<ServerState['comms']>(KEYS.comms),
@@ -274,6 +278,7 @@ export async function loadPersistedState(): Promise<void> {
       redisGet<string>(KEYS.briefingText),
       redisGet<string[]>(KEYS.briefingNudges),
       redisGet<number>(KEYS.briefingGeneratedAt),
+      redisGet<string>(KEYS.userProfile),
     ]);
 
     _state = sanitize({
@@ -295,6 +300,7 @@ export async function loadPersistedState(): Promise<void> {
       briefingText: typeof briefingText === 'string' ? briefingText : '',
       briefingNudges: Array.isArray(briefingNudges) ? briefingNudges : [],
       briefingGeneratedAt: typeof briefingGeneratedAt === 'number' ? briefingGeneratedAt : 0,
+      userProfile: typeof userProfile === 'string' ? userProfile : '',
     });
     console.log(`State restored from Redis: ${_state.tasks.length} tasks`);
     return;

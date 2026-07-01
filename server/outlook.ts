@@ -305,28 +305,21 @@ export async function syncCalendar(): Promise<void> {
 
   const colorPalette = ['var(--blue)', 'var(--violet)', 'var(--accent)', 'var(--warm)', 'var(--p1)'];
 
-  const TZ = 'America/Denver';
-
-  // Graph returns dateTime without offset — parse in event's own timezone (MST/MDT)
-  function parseInTz(dtStr: string, tzStr?: string): Date {
-    const tz = tzStr || TZ;
-    // Append a fake UTC marker so Date.parse works, then adjust using Intl
-    const utcDate = new Date(dtStr.endsWith('Z') ? dtStr : dtStr + 'Z');
-    // Use Intl to get wall-clock parts in the target timezone
-    const parts = new Intl.DateTimeFormat('en-US', {
-      timeZone: tz,
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-    }).formatToParts(utcDate);
-    const get = (t: string) => parseInt(parts.find((p) => p.type === t)?.value || '0', 10);
-    return new Date(get('year'), get('month') - 1, get('day'), get('hour'), get('minute'), get('second'));
+  // Graph returns dateTime already in the event's local timezone (no UTC offset).
+  // Parse components directly from the string — no timezone math needed.
+  function parseDt(dtStr: string): { year: number; month: number; day: number; hour: number; minute: number } {
+    const [datePart = '', timePart = ''] = dtStr.split('T');
+    const [year = 0, month = 1, day = 1] = datePart.split('-').map(Number);
+    const [hour = 0, minute = 0] = timePart.split(':').map(Number);
+    return { year, month, day, hour, minute };
   }
 
   const calEvents = (data.value || []).map((evt, i) => {
-    const startDate = parseInTz(evt.start?.dateTime || '', evt.start?.timeZone);
-    const endDate = parseInTz(evt.end?.dateTime || '', evt.end?.timeZone);
-    const startHour = startDate.getHours() + startDate.getMinutes() / 60;
-    const durationHours = (endDate.getTime() - startDate.getTime()) / 3600000;
+    const s = parseDt(evt.start?.dateTime || '');
+    const e = parseDt(evt.end?.dateTime || '');
+    const startHour = s.hour + s.minute / 60;
+    const endHour = e.hour + e.minute / 60;
+    const durationHours = endHour > startHour ? endHour - startHour : Math.max(0.5, endHour + 24 - startHour);
     return {
       id: evt.id,
       title: evt.subject || '(no title)',
@@ -334,9 +327,9 @@ export async function syncCalendar(): Promise<void> {
       duration: Math.max(0.5, durationHours),
       color: colorPalette[i % colorPalette.length],
       category: 'Work',
-      date: startDate.getDate(),
-      month: startDate.getMonth() + 1,
-      year: startDate.getFullYear(),
+      date: s.day,
+      month: s.month,
+      year: s.year,
     };
   });
 

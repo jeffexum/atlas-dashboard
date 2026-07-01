@@ -166,7 +166,6 @@ const listeners: Listener[] = [];
 
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL || process.env.UPSTASH_REDIS_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.UPSTASH_REDIS_TOKEN;
-const STATE_KEY = 'atlas:state';
 
 async function redisFetch(path: string, options?: RequestInit): Promise<unknown> {
   if (!REDIS_URL || !REDIS_TOKEN) return null;
@@ -176,6 +175,38 @@ async function redisFetch(path: string, options?: RequestInit): Promise<unknown>
   });
   return res.json();
 }
+
+async function redisSet(key: string, value: unknown): Promise<void> {
+  await redisFetch(`/set/${key}`, { method: 'POST', body: JSON.stringify(JSON.stringify(value)) });
+}
+
+async function redisGet<T>(key: string): Promise<T | null> {
+  const res = await redisFetch(`/get/${key}`) as { result: string | null } | null;
+  if (!res?.result) return null;
+  return JSON.parse(res.result) as T;
+}
+
+// Collections persisted as individual keys so each can grow independently
+const KEYS = {
+  tasks: 'atlas:tasks',
+  comms: 'atlas:comms',
+  drafts: 'atlas:drafts',
+  proposedActions: 'atlas:proposedActions',
+  habits: 'atlas:habits',
+  goals: 'atlas:goals',
+  books: 'atlas:books',
+  highlights: 'atlas:highlights',
+  ideas: 'atlas:ideas',
+  journalEntries: 'atlas:journalEntries',
+  calEvents: 'atlas:calEvents',
+  calNote: 'atlas:calNote',
+  adlerNotes: 'atlas:adlerNotes',
+  adlerMemory: 'atlas:adlerMemory',
+  adlerLastContact: 'atlas:adlerLastContact',
+  briefingText: 'atlas:briefingText',
+  briefingNudges: 'atlas:briefingNudges',
+  briefingGeneratedAt: 'atlas:briefingGeneratedAt',
+} as const;
 
 let _persistTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -187,13 +218,27 @@ function schedulePersist(): void {
 export async function persistNow(): Promise<void> {
   if (_persistTimer) { clearTimeout(_persistTimer); _persistTimer = null; }
   try {
-    // Trim adlerMemory to last 10 messages before persisting to stay under 10MB Upstash limit
-    const payload = { ..._state, adlerMemory: _state.adlerMemory.slice(-10) };
-    const result = await redisFetch(`/set/${STATE_KEY}`, {
-      method: 'POST',
-      body: JSON.stringify(JSON.stringify(payload)),
-    }) as { result: string } | null;
-    console.log(`State persisted: ${_state.tasks.length} tasks, result=${JSON.stringify(result)}`);
+    await Promise.all([
+      redisSet(KEYS.tasks, _state.tasks),
+      redisSet(KEYS.comms, _state.comms),
+      redisSet(KEYS.drafts, _state.drafts),
+      redisSet(KEYS.proposedActions, _state.proposedActions),
+      redisSet(KEYS.habits, _state.habits),
+      redisSet(KEYS.goals, _state.goals),
+      redisSet(KEYS.books, _state.books),
+      redisSet(KEYS.highlights, _state.highlights),
+      redisSet(KEYS.ideas, _state.ideas),
+      redisSet(KEYS.journalEntries, _state.journalEntries),
+      redisSet(KEYS.calEvents, _state.calEvents),
+      redisSet(KEYS.calNote, _state.calNote),
+      redisSet(KEYS.adlerNotes, _state.adlerNotes),
+      redisSet(KEYS.adlerMemory, _state.adlerMemory.slice(-20)),
+      redisSet(KEYS.adlerLastContact, _state.adlerLastContact),
+      redisSet(KEYS.briefingText, _state.briefingText),
+      redisSet(KEYS.briefingNudges, _state.briefingNudges),
+      redisSet(KEYS.briefingGeneratedAt, _state.briefingGeneratedAt),
+    ]);
+    console.log(`State persisted: ${_state.tasks.length} tasks`);
   } catch (err) {
     console.error('State persist error:', err);
   }
@@ -201,21 +246,74 @@ export async function persistNow(): Promise<void> {
 
 export async function loadPersistedState(): Promise<void> {
   try {
-    const res = await redisFetch(`/get/${STATE_KEY}`) as { result: string | null };
-    if (res?.result) {
-      const saved = JSON.parse(res.result) as Partial<ServerState>;
-      // Merge saved over seed so new fields added in code still get defaults
-      _state = { ...JSON.parse(JSON.stringify(seedState)), ...saved };
-      // Migrate adlerNotes from old string format to Record
-      if (typeof _state.adlerNotes === 'string') {
-        _state.adlerNotes = _state.adlerNotes ? { notes: _state.adlerNotes as unknown as string } : {};
-      }
-      console.log(`State restored from Redis: ${_state.tasks.length} tasks`);
-    } else {
-      console.log('No saved state in Redis — using seed data');
-    }
+    const [
+      tasks, comms, drafts, proposedActions, habits, goals, books,
+      highlights, ideas, journalEntries, calEvents, calNote,
+      adlerNotes, adlerMemory, adlerLastContact,
+      briefingText, briefingNudges, briefingGeneratedAt,
+    ] = await Promise.all([
+      redisGet<ServerState['tasks']>(KEYS.tasks),
+      redisGet<ServerState['comms']>(KEYS.comms),
+      redisGet<ServerState['drafts']>(KEYS.drafts),
+      redisGet<ServerState['proposedActions']>(KEYS.proposedActions),
+      redisGet<ServerState['habits']>(KEYS.habits),
+      redisGet<ServerState['goals']>(KEYS.goals),
+      redisGet<ServerState['books']>(KEYS.books),
+      redisGet<ServerState['highlights']>(KEYS.highlights),
+      redisGet<ServerState['ideas']>(KEYS.ideas),
+      redisGet<ServerState['journalEntries']>(KEYS.journalEntries),
+      redisGet<ServerState['calEvents']>(KEYS.calEvents),
+      redisGet<string>(KEYS.calNote),
+      redisGet<ServerState['adlerNotes']>(KEYS.adlerNotes),
+      redisGet<ServerState['adlerMemory']>(KEYS.adlerMemory),
+      redisGet<number>(KEYS.adlerLastContact),
+      redisGet<string>(KEYS.briefingText),
+      redisGet<string[]>(KEYS.briefingNudges),
+      redisGet<number>(KEYS.briefingGeneratedAt),
+    ]);
+
+    _state = {
+      tasks: tasks ?? [],
+      comms: comms ?? [],
+      drafts: drafts ?? [],
+      proposedActions: proposedActions ?? [],
+      habits: habits ?? [],
+      goals: goals ?? [],
+      books: books ?? [],
+      highlights: highlights ?? [],
+      ideas: ideas ?? [],
+      journalEntries: journalEntries ?? [],
+      calEvents: calEvents ?? [],
+      calNote: calNote ?? '',
+      adlerNotes: (adlerNotes && typeof adlerNotes === 'object' && !Array.isArray(adlerNotes)) ? adlerNotes : {},
+      adlerMemory: adlerMemory ?? [],
+      adlerLastContact: adlerLastContact ?? 0,
+      briefingText: briefingText ?? '',
+      briefingNudges: briefingNudges ?? [],
+      briefingGeneratedAt: briefingGeneratedAt ?? 0,
+    };
+    console.log(`State restored from Redis: ${_state.tasks.length} tasks`);
+    return;
   } catch (err) {
     console.error('State load error (keeping current state):', err);
+    return;
+  }
+}
+
+// Legacy single-key migration: if old atlas:state key exists, import it once
+export async function migrateLegacyState(): Promise<void> {
+  try {
+    const legacy = await redisGet<Partial<ServerState>>('atlas:state');
+    if (!legacy || typeof legacy !== 'object') return;
+    if (!Array.isArray((legacy as ServerState).tasks)) return;
+    const s = legacy as ServerState;
+    // Only migrate if current state is empty (fresh instance)
+    if (_state.tasks.length > 0) return;
+    _state = { ..._state, ...s };
+    await persistNow(); // write to new per-key format
+    console.log(`Migrated legacy state: ${_state.tasks.length} tasks`);
+  } catch {
+    // ignore — migration is best-effort
   }
 }
 

@@ -211,8 +211,11 @@ setInterval(() => {
 }, 60_000);
 
 // Load persisted state then generate briefing
-import { loadPersistedState } from './state.js';
-loadPersistedState().then(() => generateBriefing()).catch(() => {});
+import { loadPersistedState, migrateLegacyState } from './state.js';
+loadPersistedState()
+  .then(() => migrateLegacyState())
+  .then(() => generateBriefing())
+  .catch(() => {});
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 

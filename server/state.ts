@@ -124,6 +124,9 @@ export interface ServerState {
   adlerMemory: AdlerMessage[];
   adlerNotes: string;
   adlerLastContact: number;
+  briefingText: string;
+  briefingNudges: string[];
+  briefingGeneratedAt: number;
 }
 
 function makeHeatmap(rate: number, name: string): boolean[] {
@@ -158,7 +161,7 @@ const seedState: ServerState = {
       id: 'd1',
       to: 'Mark Johnson',
       re: 'Q2 Budget',
-      text: "Hi Mark, I've reviewed the Q2 numbers. The variance in Q3 projections looks reasonable given the market conditions. I'll sign off — can you send the final doc for my records? Thanks, Alex",
+      text: "Hi Mark, I've reviewed the Q2 numbers. The variance in Q3 projections looks reasonable given the market conditions. I'll sign off — can you send the final doc for my records? Thanks, Jeff",
       status: 'ready',
     },
     {
@@ -236,6 +239,9 @@ const seedState: ServerState = {
   adlerMemory: [],
   adlerNotes: '',
   adlerLastContact: 0,
+  briefingText: '',
+  briefingNudges: [],
+  briefingGeneratedAt: 0,
 };
 
 // Deep clone seed so we can reset if needed

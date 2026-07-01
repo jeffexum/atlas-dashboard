@@ -239,6 +239,8 @@ interface StoreState {
   journalEntries: JournalEntry[];
   calEvents: CalEvent[];
   calNote: string;
+  briefingText: string;
+  briefingNudges: string[];
 
   acceptAction: (id: string) => void;
   dismissAction: (id: string) => void;
@@ -282,6 +284,8 @@ export const useStore = create<StoreState>((set) => ({
   journalEntries: seedJournalEntries,
   calEvents: seedCalEvents,
   calNote: seedCalNote,
+  briefingText: '',
+  briefingNudges: [],
 
   acceptAction: (id) =>
     set((state) => {

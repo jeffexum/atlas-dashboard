@@ -334,3 +334,67 @@ export async function adlerProactiveCheck(): Promise<string | null> {
     return null;
   }
 }
+
+// ── Daily briefing generation ─────────────────────────────────────────────────
+
+export async function generateBriefing(): Promise<void> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return;
+
+  const client = new Anthropic({ apiKey });
+  const s = getState();
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+  const todayTasks = s.tasks.filter((t) => t.column === 'today' && !t.done);
+  const p1Tasks = todayTasks.filter((t) => t.priority === 'p1');
+  const openComms = s.comms.filter((c) => c.status === 'open');
+  const p1Comms = openComms.filter((c) => c.priority === 'p1');
+  const habitsPending = s.habits.filter((h) => !h.completedToday);
+  const nextEvent = s.calEvents.sort((a, b) => a.start - b.start)[0];
+
+  const prompt = `Today is ${dateStr}. Write a daily briefing for Jeff in the style of Adler — his personal coach.
+
+Current state:
+- ${todayTasks.length} tasks today, ${p1Tasks.length} urgent: ${p1Tasks.map((t) => `"${t.title}"`).join(', ') || 'none'}
+- ${openComms.length} inbox messages (${p1Comms.length} urgent): ${p1Comms.map((c) => `${c.who}: "${c.subject}"`).join(', ') || 'none'}
+- Habits pending: ${habitsPending.map((h) => h.name).join(', ') || 'none — all done'}
+- Next event: ${nextEvent ? `${nextEvent.title} at ${Math.floor(nextEvent.start)}:${nextEvent.start % 1 ? '30' : '00'}` : 'nothing scheduled'}
+- Goals: ${s.goals.map((g) => `${g.name} ${g.pct}%`).join(', ')}
+
+Write a 2-3 sentence briefing paragraph that:
+- Sounds like Adler (direct, warm, no fluff)
+- Highlights the most important thing to focus on
+- References something specific from the state above
+
+Then produce 3-4 short action chips (under 6 words each) summarizing key items.
+
+Respond with JSON only:
+{
+  "briefingText": "the paragraph",
+  "nudges": ["chip 1", "chip 2", "chip 3"]
+}`;
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 512,
+      messages: [{ role: 'user', content: prompt }],
+    });
+
+    const textBlock = response.content.find((b) => b.type === 'text');
+    if (!textBlock || textBlock.type !== 'text') return;
+
+    const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return;
+
+    const parsed = JSON.parse(jsonMatch[0]) as { briefingText: string; nudges: string[] };
+    setState({
+      briefingText: parsed.briefingText,
+      briefingNudges: parsed.nudges,
+      briefingGeneratedAt: Date.now(),
+    });
+  } catch (err) {
+    console.error('Briefing generation error:', err);
+  }
+}

@@ -348,7 +348,7 @@ export async function runAgent(input: {
   const systemPrompt = `You are ${meta.name}, the ${meta.role} agent in Atlas — a personal life dashboard.
 You have access to the user's current state (tasks, habits, goals, inbox, calendar, etc.)
 Current date: Monday June 29, 2026.
-User: Alex
+User: Jeff
 
 Your personality: ${meta.personality}
 

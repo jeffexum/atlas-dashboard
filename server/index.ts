@@ -5,7 +5,7 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { getState, setState } from './state.js';
 import { runAgent } from './agents.js';
-import { adlerProactiveCheck } from './adler.js';
+import { adlerProactiveCheck, generateBriefing } from './adler.js';
 import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated } from './outlook.js';
 import { createTelegramBot, activeChatIds, sendMorningBriefing, sendHabitReminder } from './telegram.js';
 
@@ -76,6 +76,14 @@ app.get('/api/events', (req: Request, res: Response) => {
     clearInterval(heartbeat);
     sseClients.delete(res);
   });
+});
+
+// ── Briefing ──────────────────────────────────────────────────────────────────
+
+app.post('/api/briefing/generate', async (_req: Request, res: Response) => {
+  await generateBriefing();
+  const s = getState();
+  res.json({ briefingText: s.briefingText, briefingNudges: s.briefingNudges });
 });
 
 // ── Outlook / Microsoft Graph ─────────────────────────────────────────────────
@@ -182,10 +190,14 @@ setInterval(async () => {
 
 setInterval(() => {
   const now = new Date();
-  if (now.getHours() === 7 && now.getMinutes() === 0 && bot) {
-    activeChatIds.forEach((chatId) => sendMorningBriefing(bot!, chatId));
+  if (now.getHours() === 7 && now.getMinutes() === 0) {
+    generateBriefing();
+    if (bot) activeChatIds.forEach((chatId) => sendMorningBriefing(bot!, chatId));
   }
 }, 60_000);
+
+// Generate briefing on startup
+generateBriefing().catch(() => {});
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 

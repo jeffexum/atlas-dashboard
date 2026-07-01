@@ -113,7 +113,7 @@ export async function sendMorningBriefing(bot: TelegramBot, chatId: number): Pro
   const nextEvent = s.calEvents.filter((e) => e.date === 29).sort((a, b) => a.start - b.start)[0];
 
   const lines = [
-    `☀️ *Good morning, Alex!* Here's your briefing for today:`,
+    `☀️ *Good morning, Jeff!* Here's your briefing for today:`,
     ``,
     `📋 *Tasks:* ${todayTasks.length} today, ${p1Tasks.length} urgent`,
     p1Tasks.length > 0 ? p1Tasks.map((t) => `  🔴 ${t.title}`).join('\n') : '',

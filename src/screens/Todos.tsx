@@ -203,6 +203,7 @@ export default function Todos({ setScreen: _setScreen }: Props) {
   const moveTask = useStore((s) => s.moveTask);
   const editTask = useStore((s) => s.editTask);
   const deleteTask = useStore((s) => s.deleteTask);
+  const [activeTab, setActiveTab] = useState<'All' | 'Work' | 'Personal' | 'Health'>('All');
   const [sortByPriority, setSortByPriority] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -217,9 +218,10 @@ export default function Todos({ setScreen: _setScreen }: Props) {
     return [...arr].sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
   };
 
-  const todayTasks = sortTasks(tasks.filter((t) => t.column === 'today'));
-  const upcomingTasks = sortTasks(tasks.filter((t) => t.column === 'upcoming'));
-  const doneTasks = sortTasks(tasks.filter((t) => t.column === 'done'));
+  const filtered = activeTab === 'All' ? tasks : tasks.filter((t) => t.category === activeTab);
+  const todayTasks = sortTasks(filtered.filter((t) => t.column === 'today'));
+  const upcomingTasks = sortTasks(filtered.filter((t) => t.column === 'upcoming'));
+  const doneTasks = sortTasks(filtered.filter((t) => t.column === 'done'));
 
   function handleAddTask() {
     if (!newTitle.trim()) return;
@@ -253,29 +255,49 @@ export default function Todos({ setScreen: _setScreen }: Props) {
         color: 'var(--ink)',
       }}
     >
-      {/* Top bar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
-          marginBottom: '16px',
-          flexWrap: 'wrap',
-        }}
-      >
-        <span style={{ fontSize: '13px', color: 'var(--mut)', fontWeight: 500 }}>Priority:</span>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: 'var(--p1)', display: 'inline-block' }} />
-          <span style={{ fontSize: '12.5px', color: 'var(--ink2)' }}>P1 Urgent</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: 'var(--p2)', display: 'inline-block' }} />
-          <span style={{ fontSize: '12.5px', color: 'var(--ink2)' }}>P2 Important</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          <span style={{ width: '9px', height: '9px', borderRadius: '50%', background: 'var(--p3)', display: 'inline-block' }} />
-          <span style={{ fontSize: '12.5px', color: 'var(--ink2)' }}>P3 Normal</span>
-        </div>
+      {/* Tab bar */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '16px' }}>
+        {(['All', 'Work', 'Personal', 'Health'] as const).map((tab) => {
+          const count = tab === 'All'
+            ? tasks.filter((t) => t.column !== 'done').length
+            : tasks.filter((t) => t.category === tab && t.column !== 'done').length;
+          const isActive = activeTab === tab;
+          return (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              style={{
+                padding: '5px 14px',
+                fontSize: '12.5px',
+                fontFamily: "'Schibsted Grotesk', sans-serif",
+                fontWeight: isActive ? 600 : 400,
+                border: `1px solid ${isActive ? 'var(--accent)' : 'var(--line)'}`,
+                borderRadius: '20px',
+                background: isActive ? 'var(--accentbg)' : 'var(--card)',
+                color: isActive ? 'var(--accent)' : 'var(--ink2)',
+                cursor: 'pointer',
+                transition: 'all .15s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+            >
+              {tab}
+              {count > 0 && (
+                <span style={{
+                  fontSize: '10px',
+                  fontFamily: "'JetBrains Mono', monospace",
+                  padding: '1px 5px',
+                  borderRadius: '10px',
+                  background: isActive ? 'var(--accent)' : 'var(--line2)',
+                  color: isActive ? '#fff' : 'var(--mut)',
+                }}>
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
         <div style={{ flex: 1 }} />
         <button
           onClick={() => setSortByPriority((v) => !v)}

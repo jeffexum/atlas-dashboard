@@ -267,27 +267,49 @@ export async function runAdler(userMessage: string): Promise<string> {
 
   appendMemory('user', userMessage);
 
-  const response = await getClient().messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 1024,
-    system: `${ADLER_SYSTEM}\n\n${buildContext()}`,
-    tools: ADLER_TOOLS,
-    messages: [{ role: 'user', content: userMessage }],
-  });
+  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: userMessage }];
 
-  for (const block of response.content) {
-    if (block.type === 'tool_use') {
-      applyTool(block.name, block.input as Record<string, unknown>);
+  // Agentic loop — keep going until stop_reason is 'end_turn' (no more tool calls)
+  for (let i = 0; i < 5; i++) {
+    const response = await getClient().messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      system: `${ADLER_SYSTEM}\n\n${buildContext()}`,
+      tools: ADLER_TOOLS,
+      messages,
+    });
+
+    messages.push({ role: 'assistant', content: response.content });
+
+    if (response.stop_reason === 'end_turn') {
+      const textBlock = response.content.find((b) => b.type === 'text');
+      const reply = textBlock && textBlock.type === 'text' ? textBlock.text : 'Done.';
+      appendMemory('adler', reply);
+      setState({ adlerLastContact: Date.now() });
+      return reply;
     }
+
+    // Process tool calls and build tool_result turn
+    const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    for (const block of response.content) {
+      if (block.type === 'tool_use') {
+        applyTool(block.name, block.input as Record<string, unknown>);
+        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'ok' });
+      }
+    }
+
+    if (toolResults.length === 0) break;
+    messages.push({ role: 'user', content: toolResults });
   }
 
-  const textBlock = response.content.find((b) => b.type === 'text');
-  const reply = textBlock && textBlock.type === 'text' ? textBlock.text : "Got it.";
-
-  appendMemory('adler', reply);
+  // Fallback if loop exits without end_turn
+  const last = messages[messages.length - 1];
+  const fallbackText = Array.isArray(last?.content)
+    ? (last.content.find((b): b is Anthropic.TextBlockParam => b.type === 'text')?.text ?? 'Done.')
+    : 'Done.';
+  appendMemory('adler', fallbackText);
   setState({ adlerLastContact: Date.now() });
-
-  return reply;
+  return fallbackText;
 }
 
 // ── Proactive hourly check ────────────────────────────────────────────────────

@@ -299,6 +299,7 @@ export async function runAdler(userMessage: string): Promise<string> {
     }
 
     if (toolResults.length === 0) break;
+    await persistNow();
     messages.push({ role: 'user', content: toolResults });
   }
 

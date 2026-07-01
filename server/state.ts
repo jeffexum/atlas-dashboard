@@ -347,12 +347,10 @@ export function editTask(id: string, updates: Partial<Pick<Task, 'title' | 'prio
   setState({
     tasks: _state.tasks.map((t) => t.id === id ? { ...t, ...updates } : t),
   });
-  persistNow();
 }
 
 export function deleteTask(id: string): void {
   setState({ tasks: _state.tasks.filter((t) => t.id !== id) });
-  persistNow();
 }
 
 export function moveTask(id: string, column: 'today' | 'upcoming' | 'done'): void {

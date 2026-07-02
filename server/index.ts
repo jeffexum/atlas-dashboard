@@ -276,6 +276,17 @@ app.get('/api/whiteboard/sessions', async (_req: Request, res: Response) => {
   }
 });
 
+app.get('/api/debug/comms', (_req: Request, res: Response) => {
+  const s = getState();
+  res.json(s.comms.map((c) => ({
+    who: c.who,
+    subject: c.subject,
+    hasBody: !!((c as typeof c & { body?: string }).body),
+    bodyLen: ((c as typeof c & { body?: string }).body || '').length,
+    previewLen: c.preview.length,
+  })));
+});
+
 app.post('/api/admin/clear-cal-note', async (_req: Request, res: Response) => {
   setState({ calNote: '' });
   await persistNow();

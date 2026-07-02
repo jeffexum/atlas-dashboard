@@ -312,6 +312,8 @@ export async function syncMail(): Promise<void> {
     };
   });
 
+  const withBody = comms.filter((c) => c.body && c.body.length > 50).length;
+  console.log(`[syncMail] ${comms.length} emails, ${withBody} with full body`);
   setState({ comms });
 }
 

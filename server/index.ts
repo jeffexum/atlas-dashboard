@@ -13,6 +13,7 @@ import type { ChatMessage } from './whiteboard.js';
 import { createTelegramBot, activeChatIds, sendMorningBriefing, sendHabitReminder } from './telegram.js';
 
 const app = express();
+const BOOTED_AT = new Date().toISOString();
 const PORT = parseInt(process.env.PORT || '3001', 10);
 const FRONTEND_URL = process.env.FRONTEND_URL || '*';
 
@@ -315,6 +316,10 @@ app.get('/api/whiteboard/sessions', async (_req: Request, res: Response) => {
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }
+});
+
+app.get('/api/debug/version', (_req: Request, res: Response) => {
+  res.json({ commit: process.env.RENDER_GIT_COMMIT || 'unknown', bootedAt: BOOTED_AT });
 });
 
 app.get('/api/debug/persist', async (_req: Request, res: Response) => {

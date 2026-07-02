@@ -109,6 +109,35 @@ export default function Calendar() {
     (ev as { source?: string }).source === 'personal' ||
     ev.category === 'Personal';
 
+  // Overlapping events within a column share the width in side-by-side lanes
+  function layoutLanes(evts: typeof dayEvents): Map<string, { lane: number; lanes: number }> {
+    const sorted = [...evts].sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
+    const result = new Map<string, { lane: number; lanes: number }>();
+    let cluster: { id: string; lane: number }[] = [];
+    let laneEnds: number[] = [];
+    let clusterEnd = 0;
+    const flush = () => {
+      cluster.forEach((c) => result.set(c.id, { lane: c.lane, lanes: laneEnds.length }));
+      cluster = [];
+      laneEnds = [];
+      clusterEnd = 0;
+    };
+    for (const ev of sorted) {
+      if (cluster.length && ev.start >= clusterEnd) flush();
+      let lane = laneEnds.findIndex((end) => end <= ev.start);
+      if (lane === -1) { lane = laneEnds.length; laneEnds.push(0); }
+      laneEnds[lane] = ev.start + ev.duration;
+      cluster.push({ id: ev.id, lane });
+      clusterEnd = Math.max(clusterEnd, ev.start + ev.duration);
+    }
+    flush();
+    return result;
+  }
+  const laneMap = new Map([
+    ...layoutLanes(dayEvents.filter((e) => !isPersonal(e))),
+    ...layoutLanes(dayEvents.filter((e) => isPersonal(e))),
+  ]);
+
   function handleTimelineClick(e: React.MouseEvent<HTMLDivElement>) {
     const target = e.target as HTMLElement;
     // Don't open if clicking on an event
@@ -329,6 +358,9 @@ export default function Calendar() {
             const bg = eventBgMap[ev.color] || 'rgba(80,80,80,0.1)';
             const isSelected = selectedEventId === ev.id;
             const personal = isPersonal(ev);
+            const { lane, lanes } = laneMap.get(ev.id) || { lane: 0, lanes: 1 };
+            // Both columns are (50% - 40px) wide; work starts at 60px, personal at 50%+28px
+            const colLeft = personal ? '50% + 28px' : '60px';
             return (
               <React.Fragment key={ev.id}>
                 <div
@@ -340,8 +372,8 @@ export default function Calendar() {
                   style={{
                     position: 'absolute',
                     top,
-                    left: personal ? 'calc(50% + 28px)' : 60,
-                    right: personal ? 12 : 'calc(50% - 20px)',
+                    left: `calc(${colLeft} + (50% - 40px) * ${lane / lanes})`,
+                    width: `calc((50% - 40px) * ${1 / lanes} - ${lanes > 1 ? 3 : 0}px)`,
                     height,
                     padding: '4px 8px',
                     borderRadius: 3,
@@ -398,8 +430,8 @@ export default function Calendar() {
                     style={{
                       position: 'absolute',
                       top: top + height + 4,
-                      left: 60,
-                      right: 12,
+                      left: `calc(${colLeft})`,
+                      width: 'calc(50% - 40px)',
                       background: 'var(--card)',
                       border: `1px solid ${ev.color}`,
                       borderRadius: 6,

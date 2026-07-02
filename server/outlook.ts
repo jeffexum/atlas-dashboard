@@ -439,12 +439,14 @@ export async function syncCalendar(): Promise<void> {
   const calEvents = (data.value || []).map((evt, i) => {
     const s = parseDt(evt.start?.dateTime || '');
     const e = parseDt(evt.end?.dateTime || '');
-    const startHour = s.hour + s.minute / 60;
+    const isAllDay = !!(evt as { isAllDay?: boolean }).isAllDay;
+    const startHour = isAllDay ? 8 : s.hour + s.minute / 60;
     const endHour = e.hour + e.minute / 60;
-    const durationHours = endHour > startHour ? endHour - startHour : Math.max(0.5, endHour + 24 - startHour);
+    const durationHours = isAllDay ? 1
+      : endHour > startHour ? endHour - startHour : Math.max(0.5, endHour + 24 - startHour);
     return {
       id: evt.id,
-      title: evt.subject || '(no title)',
+      title: isAllDay ? `📅 ${evt.subject || '(no title)'}` : (evt.subject || '(no title)'),
       start: startHour,
       duration: Math.max(0.5, durationHours),
       color: colorPalette[i % colorPalette.length],

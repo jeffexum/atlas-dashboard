@@ -328,16 +328,21 @@ export async function syncMail(): Promise<void> {
   since.setDate(since.getDate() - 30);
   const sinceStr = since.toISOString();
 
-  // Paginate inbox until we've seen everything within 30-day window (max 500 messages)
-  async function fetchPaged(url: string, stopBefore: Date, maxItems = 500): Promise<GraphMessage[]> {
+  const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
+
+  // Paginate until oldest message is before stopBefore (max 500 messages)
+  async function fetchPaged(path: string, stopBefore: Date, dateField: string, maxItems = 500): Promise<GraphMessage[]> {
     const all: GraphMessage[] = [];
-    let nextUrl: string | null = url;
+    let nextUrl: string | null = path;
     while (nextUrl && all.length < maxItems) {
-      const page = await graphGet(nextUrl) as { value: GraphMessage[]; '@odata.nextLink'?: string };
+      // graphGet expects a path; strip base URL if nextLink is absolute
+      const pathOrUrl = nextUrl.startsWith(GRAPH_BASE) ? nextUrl.slice(GRAPH_BASE.length) : nextUrl;
+      const page = await graphGet(pathOrUrl) as { value: GraphMessage[]; '@odata.nextLink'?: string };
       const items = page.value || [];
+      if (!items.length) break;
       all.push(...items);
-      const oldest = items[items.length - 1];
-      const oldestDate = oldest?.receivedDateTime || (oldest as (GraphMessage & { sentDateTime?: string }))?.sentDateTime;
+      const oldest = items[items.length - 1] as Record<string, unknown>;
+      const oldestDate = oldest[dateField] as string | undefined;
       if (!oldestDate || new Date(oldestDate) < stopBefore) break;
       nextUrl = page['@odata.nextLink'] || null;
     }
@@ -347,11 +352,11 @@ export async function syncMail(): Promise<void> {
   const [inboxMessages, sentMessages] = await Promise.all([
     fetchPaged(
       `/me/mailFolders/inbox/messages?$top=50&$orderby=receivedDateTime%20desc&$select=id,subject,from,receivedDateTime,bodyPreview,body,isRead,conversationId`,
-      since
+      since, 'receivedDateTime'
     ),
     fetchPaged(
       `/me/mailFolders/sentItems/messages?$top=50&$orderby=sentDateTime%20desc&$select=conversationId,sentDateTime`,
-      since
+      since, 'sentDateTime'
     ),
   ]);
 

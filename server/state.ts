@@ -184,7 +184,12 @@ async function redisFetch(path: string, options?: RequestInit): Promise<unknown>
 }
 
 async function redisSet(key: string, value: unknown): Promise<void> {
-  await redisFetch(`/set/${key}`, { method: 'POST', body: JSON.stringify(value) });
+  const res = await redisFetch(`/set/${key}`, { method: 'POST', body: JSON.stringify(value) }) as
+    { result?: string; error?: string } | null;
+  if (res === null) return; // Redis not configured
+  if (res.error || res.result !== 'OK') {
+    throw new Error(`Redis SET ${key} failed: ${res.error || JSON.stringify(res)}`);
+  }
 }
 
 async function redisGet<T>(key: string): Promise<T | null> {
@@ -233,35 +238,46 @@ function schedulePersist(): void {
   _persistTimer = setTimeout(() => persistNow(), 500);
 }
 
-export async function persistNow(): Promise<void> {
+export async function persistNow(): Promise<Record<string, string>> {
   if (_persistTimer) { clearTimeout(_persistTimer); _persistTimer = null; }
-  try {
-    await Promise.all([
-      redisSet(KEYS.tasks, _state.tasks),
-      redisSet(KEYS.comms, _state.comms),
-      redisSet(KEYS.drafts, _state.drafts),
-      redisSet(KEYS.proposedActions, _state.proposedActions),
-      redisSet(KEYS.habits, _state.habits),
-      redisSet(KEYS.goals, _state.goals),
-      redisSet(KEYS.books, _state.books),
-      redisSet(KEYS.highlights, _state.highlights),
-      redisSet(KEYS.ideas, _state.ideas),
-      redisSet(KEYS.journalEntries, _state.journalEntries),
-      redisSet(KEYS.calEvents, _state.calEvents),
-      redisSet(KEYS.calNote, _state.calNote),
-      redisSet(KEYS.adlerNotes, _state.adlerNotes),
-      redisSet(KEYS.adlerMemory, _state.adlerMemory.slice(-20)),
-      redisSet(KEYS.adlerLastContact, _state.adlerLastContact),
-      redisSet(KEYS.briefingText, _state.briefingText),
-      redisSet(KEYS.briefingNudges, _state.briefingNudges),
-      redisSet(KEYS.briefingGeneratedAt, _state.briefingGeneratedAt),
-      redisSet(KEYS.userProfile, _state.userProfile),
-    ]);
-    console.log(`State persisted: ${_state.tasks.length} tasks`);
-  } catch (err) {
-    console.error('State persist error:', err);
-  }
+  const results: Record<string, string> = {};
+  const trySet = async (key: string, value: unknown) => {
+    try {
+      await redisSet(key, value);
+      results[key] = 'OK';
+    } catch (err) {
+      results[key] = (err as Error).message;
+      console.error(`Persist failed for ${key}:`, (err as Error).message);
+    }
+  };
+  await Promise.all([
+    trySet(KEYS.tasks, _state.tasks),
+    trySet(KEYS.comms, _state.comms),
+    trySet(KEYS.drafts, _state.drafts),
+    trySet(KEYS.proposedActions, _state.proposedActions),
+    trySet(KEYS.habits, _state.habits),
+    trySet(KEYS.goals, _state.goals),
+    trySet(KEYS.books, _state.books),
+    trySet(KEYS.highlights, _state.highlights),
+    trySet(KEYS.ideas, _state.ideas),
+    trySet(KEYS.journalEntries, _state.journalEntries),
+    trySet(KEYS.calEvents, _state.calEvents),
+    trySet(KEYS.calNote, _state.calNote),
+    trySet(KEYS.adlerNotes, _state.adlerNotes),
+    trySet(KEYS.adlerMemory, _state.adlerMemory.slice(-20)),
+    trySet(KEYS.adlerLastContact, _state.adlerLastContact),
+    trySet(KEYS.briefingText, _state.briefingText),
+    trySet(KEYS.briefingNudges, _state.briefingNudges),
+    trySet(KEYS.briefingGeneratedAt, _state.briefingGeneratedAt),
+    trySet(KEYS.userProfile, _state.userProfile),
+  ]);
+  const failed = Object.entries(results).filter(([, v]) => v !== 'OK');
+  console.log(failed.length
+    ? `State persisted with ${failed.length} FAILURES: ${failed.map(([k]) => k).join(', ')}`
+    : `State persisted: ${_state.tasks.length} tasks, ${_state.comms.length} comms, ${_state.calEvents.length} calEvents`);
+  return results;
 }
+
 
 export async function loadPersistedState(): Promise<void> {
   try {

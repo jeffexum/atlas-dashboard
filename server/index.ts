@@ -317,6 +317,11 @@ app.get('/api/whiteboard/sessions', async (_req: Request, res: Response) => {
   }
 });
 
+app.get('/api/debug/persist', async (_req: Request, res: Response) => {
+  const results = await persistNow();
+  res.json(results);
+});
+
 app.get('/api/debug/comms', (_req: Request, res: Response) => {
   const s = getState();
   res.json(s.comms.map((c) => ({

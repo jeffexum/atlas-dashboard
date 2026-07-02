@@ -185,21 +185,38 @@ export function isAuthenticated(): boolean {
 }
 
 async function graphGet(path: string, extraHeaders?: Record<string, string>): Promise<unknown> {
-  const token = await getAccessToken();
-  const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+  let token = await getAccessToken();
+  let res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
     headers: { Authorization: `Bearer ${token}`, ...extraHeaders },
   });
+  // Stored access token can be stale even before expires_at (e.g. after redeploy) — force refresh and retry once
+  if (res.status === 401) {
+    await refreshAccessToken();
+    token = tokenData!.access_token;
+    res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+      headers: { Authorization: `Bearer ${token}`, ...extraHeaders },
+    });
+  }
   if (!res.ok) throw new Error(`Graph API ${path} returned ${res.status}`);
   return res.json();
 }
 
 async function graphPost(path: string, body: unknown): Promise<void> {
-  const token = await getAccessToken();
-  const res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+  let token = await getAccessToken();
+  let res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  if (res.status === 401) {
+    await refreshAccessToken();
+    token = tokenData!.access_token;
+    res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+  }
   if (!res.ok) {
     const err = await res.text();
     throw new Error(`Graph API POST ${path} returned ${res.status}: ${err}`);

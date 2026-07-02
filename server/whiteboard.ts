@@ -71,44 +71,79 @@ export interface ChatMessage {
 
 function buildSystemPrompt(): string {
   const s = getState();
+  console.log(`[whiteboard] buildSystemPrompt: ${s.comms.length} comms, ${s.tasks.length} tasks, ${s.calEvents.length} calEvents`);
+  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
   const todayTasks = s.tasks.filter((t) => t.column === 'today' && !t.done);
-  const openComms = s.comms.filter((c) => c.status === 'open').slice(0, 5);
+  const upcomingTasks = s.tasks.filter((t) => t.column === 'upcoming' && !t.done);
+  const openComms = s.comms.filter((c) => c.status === 'open');
+  const activeGoals = s.goals.filter((g) => g.pct < 100);
+  const todayEvents = s.calEvents.filter((e) => e.date === new Date().getDate());
 
-  const taskSummary = todayTasks.length
-    ? todayTasks.map((t) => `- [${t.priority.toUpperCase()}] ${t.title}`).join('\n')
-    : '- none';
+  const taskLines = [
+    ...todayTasks.map((t) => `  [${t.priority.toUpperCase()}] TODAY: ${t.title}`),
+    ...upcomingTasks.map((t) => `  [${t.priority.toUpperCase()}] UPCOMING: ${t.title}`),
+  ].join('\n') || '  none';
 
-  const commSummary = openComms.length
-    ? openComms.map((c) => `- ${c.who}: ${c.subject}`).join('\n')
-    : '- none';
+  const commLines = openComms.map((c) =>
+    `  [${c.priority.toUpperCase()}] From: ${c.who} | Subject: ${c.subject} | Preview: ${c.preview}`
+  ).join('\n') || '  none';
+
+  const goalLines = activeGoals.map((g) =>
+    `  ${g.name} — ${g.pct}% complete (${g.current} / ${g.target}), deadline: ${g.deadline}`
+  ).join('\n') || '  none';
+
+  const habitLines = s.habits.map((h) =>
+    `  ${h.name} — streak: ${h.streak} days, today: ${h.completedToday ? '✓ done' : 'pending'}`
+  ).join('\n') || '  none';
+
+  const calLines = todayEvents.length
+    ? todayEvents.map((e) => `  ${Math.floor(e.start)}:${e.start % 1 ? '30' : '00'} — ${e.title} (${e.duration}h)`).join('\n')
+    : '  nothing scheduled today';
+
+  const journalLines = s.journalEntries.slice(0, 3).map((j) =>
+    `  [${j.date}] ${j.text.slice(0, 120)}`
+  ).join('\n') || '  none';
 
   const profileSection = s.userProfile
-    ? `\n\nUSER PROFILE:\n${s.userProfile.slice(0, 1500)}`
+    ? `\n\nUSER PROFILE (communication style, relationships, company context):\n${s.userProfile}`
     : '';
 
-  return `You are Adler, a sharp and thoughtful AI assistant embedded in Atlas — Jeff's personal life OS.
+  return `You are Adler, Jeff's sharp and deeply context-aware AI assistant inside Atlas.
 
-Jeff Williams is the CEO of Exum Instruments, a deep-tech mass spectrometry startup in Denver, CO.${profileSection}
+Jeff Williams is the CEO of Exum Instruments, a deep-tech mass spectrometry startup in Denver, CO. Today is ${today}.${profileSection}
 
-CURRENT ATLAS SNAPSHOT:
-Today's tasks:
-${taskSummary}
+━━━ CURRENT ATLAS STATE ━━━
 
-Open inbox items:
-${commSummary}
+TASKS:
+${taskLines}
 
-Goals: ${s.goals.length} active | Habits: ${s.habits.length} tracked
+INBOX (${openComms.length} open emails):
+${commLines}
+
+TODAY'S CALENDAR:
+${calLines}
+
+GOALS:
+${goalLines}
+
+HABITS:
+${habitLines}
+
+RECENT JOURNAL:
+${journalLines}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 YOUR ROLE ON THE WHITEBOARD:
-This is a freeform workspace. You can help with anything:
-- Think through problems, brainstorm, strategize
-- Workshop email drafts, proposals, investor updates
-- Analyze uploaded documents (PDFs, images, spreadsheets)
-- Review and give feedback on writing
-- Plan, prioritize, and reason through decisions
-- Answer questions, research, explain
+This is Jeff's freeform workspace. You have full context on everything in his life OS. Help with anything:
+- Reference specific emails by sender/subject from the inbox above
+- Workshop drafts (emails, proposals, investor updates) — you know Jeff's voice
+- Think through decisions with full awareness of his goals and priorities
+- Analyze uploaded documents, spreadsheets, images
+- Plan and strategize with real context
 
-Be direct, intelligent, and genuinely useful. Responses can be as long as needed — this is a working session, not a quick command. Use markdown for structure when helpful. You know Jeff's context well — use it.`;
+Be direct and genuinely useful. Use Jeff's actual data — names, subjects, details — not placeholders. Responses can be as long as needed. Use markdown for structure.`;
 }
 
 // ── Main chat handler ─────────────────────────────────────────────────────────

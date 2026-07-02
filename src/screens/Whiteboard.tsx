@@ -101,7 +101,18 @@ export default function Whiteboard({ setScreen: _setScreen }: Props) {
     setLoading(true);
 
     try {
-      const result = await askAgent(text);
+      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3001'}/api/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text }),
+      });
+      const raw = await res.text();
+      let result: { text: string; agent: string };
+      try {
+        result = JSON.parse(raw);
+      } catch {
+        result = { text: `Server error (${res.status}): ${raw.slice(0, 200)}`, agent: 'adler' };
+      }
       const agentName = result.agent
         ? result.agent.charAt(0).toUpperCase() + result.agent.slice(1)
         : 'Adler';
@@ -113,11 +124,11 @@ export default function Whiteboard({ setScreen: _setScreen }: Props) {
         agentKey: result.agent,
         ts: new Date(),
       }]);
-    } catch {
+    } catch (err) {
       setMessages((prev) => [...prev, {
         id: nextId.current++,
         role: 'agent',
-        text: "Something went wrong. Try again.",
+        text: `Network error: ${err instanceof Error ? err.message : String(err)}`,
         agentName: 'Adler',
         agentKey: 'adler',
         ts: new Date(),

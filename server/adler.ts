@@ -57,9 +57,11 @@ CONTENT LIBRARY (rotate these — connect them to what's relevant in their dashb
 function buildContext(): string {
   const s = getState();
   const now = new Date();
-  const hour = now.getHours();
-  const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  // Server runs in UTC — everything time-related must be Denver local
+  const TZ = 'America/Denver';
+  const hour = parseInt(now.toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: TZ }), 10);
+  const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: TZ });
+  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: TZ });
 
   const recentMemory = s.adlerMemory.slice(-12);
 
@@ -79,7 +81,7 @@ function buildContext(): string {
     `  [${d.id}] to ${d.to}, re: "${d.re}"${d.commId ? ' (in-thread reply)' : ' (new email)'}\n    ${d.text.slice(0, 200).replace(/\n/g, ' ')}`
   );
 
-  const today = now.getDate();
+  const today = parseInt(now.toLocaleDateString('en-US', { day: 'numeric', timeZone: TZ }), 10);
   const calLines = s.calEvents
     .filter((e) => e.date >= today && e.date <= today + 7)
     .sort((a, b) => a.date - b.date || a.start - b.start)
@@ -275,7 +277,7 @@ export async function generateBriefing(): Promise<void> {
   if (!process.env.ANTHROPIC_API_KEY) return;
 
   const now = new Date();
-  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'America/Denver' });
 
   const prompt = `Today is ${dateStr}. You are Adler. Below is the complete current state of Jeff's world — inbox with email excerpts, pending drafts, both calendars (work Outlook + personal Gmail), tasks, habits, goals, your memory of him.
 

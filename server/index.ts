@@ -452,7 +452,8 @@ setInterval(async () => {
 
 setInterval(() => {
   const now = new Date();
-  if (now.getHours() === 7 && now.getMinutes() === 0) {
+  const denverHour = parseInt(now.toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/Denver' }), 10);
+  if (denverHour === 7 && now.getMinutes() === 0) {
     generateBriefing();
     if (bot) activeChatIds.forEach((chatId) => sendMorningBriefing(bot!, chatId));
   }

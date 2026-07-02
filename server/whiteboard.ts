@@ -85,10 +85,9 @@ function buildSystemPrompt(): string {
     ...upcomingTasks.map((t) => `  [${t.priority.toUpperCase()}] UPCOMING: ${t.title}`),
   ].join('\n') || '  none';
 
-  const commLines = openComms.map((c) => {
-    const content = (c as typeof c & { body?: string }).body || c.preview;
-    return `--- EMAIL ---\nFrom: ${c.who}\nSubject: ${c.subject}\nPriority: ${c.priority.toUpperCase()}\n\n${content}\n`;
-  }).join('\n') || '  none';
+  const commLines = openComms.map((c) =>
+    `--- EMAIL ---\nFrom: ${c.who}\nSubject: ${c.subject}\nPriority: ${c.priority.toUpperCase()}\n\n${c.body || c.preview}\n`
+  ).join('\n') || '  none';
 
   const goalLines = activeGoals.map((g) =>
     `  ${g.name} — ${g.pct}% complete (${g.current} / ${g.target}), deadline: ${g.deadline}`

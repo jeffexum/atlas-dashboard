@@ -340,7 +340,7 @@ export async function syncMail(): Promise<void> {
       const items = page.value || [];
       if (!items.length) break;
       all.push(...items);
-      const oldest = items[items.length - 1] as Record<string, unknown>;
+      const oldest = items[items.length - 1] as unknown as Record<string, unknown>;
       const oldestDate = oldest[dateField] as string | undefined;
       if (!oldestDate || new Date(oldestDate) < stopBefore) break;
       nextUrl = page['@odata.nextLink'] || null;

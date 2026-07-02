@@ -76,7 +76,7 @@ function buildSystemPrompt(): string {
 
   const todayTasks = s.tasks.filter((t) => t.column === 'today' && !t.done);
   const upcomingTasks = s.tasks.filter((t) => t.column === 'upcoming' && !t.done);
-  const openComms = s.comms.filter((c) => c.status === 'open').slice(0, 5);
+  const openComms = s.comms.filter((c) => c.status === 'open').slice(0, 15);
   const activeGoals = s.goals.filter((g) => g.pct < 100);
   const todayEvents = s.calEvents.filter((e) => e.date === new Date().getDate());
 

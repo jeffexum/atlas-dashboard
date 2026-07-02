@@ -243,6 +243,7 @@ interface GraphMessage {
   body?: { content?: string; contentType?: string };
   isRead?: boolean;
   inferenceClassification?: 'focused' | 'other';
+  conversationId?: string;
 }
 
 interface GraphEvent {
@@ -286,34 +287,98 @@ function stripHtml(html: string): string {
     .trim();
 }
 
+// Automated sender patterns to always filter out
+const AUTOMATED_PATTERNS = [
+  /no.?reply/i, /noreply/i, /do.?not.?reply/i,
+  /notifications?@/i, /alerts?@/i, /updates?@/i,
+  /newsletter/i, /digest@/i, /mailer@/i,
+  /support@.*\.(zendesk|freshdesk|intercom)/i,
+];
+
+function isAutomated(email: string, subject: string): boolean {
+  if (AUTOMATED_PATTERNS.some((p) => p.test(email))) return true;
+  if (/unsubscribe|notification|automated|auto-generated/i.test(subject)) return true;
+  return false;
+}
+
+async function scoreEmailsWithAI(emails: { id: string; from: string; subject: string; preview: string }[]): Promise<Set<string>> {
+  if (!emails.length || !process.env.ANTHROPIC_API_KEY) return new Set(emails.map((e) => e.id));
+  const list = emails.map((e, i) => `${i + 1}. From: ${e.from} | Subject: ${e.subject} | Preview: ${e.preview}`).join('\n');
+  const response = await getClient().messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 256,
+    messages: [{
+      role: 'user',
+      content: `You are filtering a CEO's inbox. Return ONLY the numbers of emails that need a human response or action — skip newsletters, FYI updates, automated notifications, receipts, and calendar invites already accepted.
+
+${list}
+
+Reply with just the numbers, comma-separated. Example: 1,3,5`,
+    }],
+  });
+  const text = response.content.find((b) => b.type === 'text');
+  const raw = text?.type === 'text' ? text.text.trim() : '';
+  const indices = new Set(raw.split(',').map((n) => parseInt(n.trim(), 10) - 1).filter((n) => !isNaN(n)));
+  return new Set(emails.filter((_, i) => indices.has(i)).map((e) => e.id));
+}
+
 export async function syncMail(): Promise<void> {
-  const data = await graphGet('/me/mailFolders/inbox/messages?$top=20&$orderby=receivedDateTime%20desc&$select=id,subject,from,receivedDateTime,bodyPreview,body,isRead,inferenceClassification') as { value: GraphMessage[] };
+  // 30-day window
+  const since = new Date();
+  since.setDate(since.getDate() - 30);
+  const sinceStr = since.toISOString();
 
-  const all = data.value || [];
-  const hasFocused = all.some((m) => m.inferenceClassification === 'focused');
-  const messages = hasFocused ? all.filter((m) => m.inferenceClassification === 'focused') : all;
+  const [inboxData, sentData] = await Promise.all([
+    graphGet(
+      `/me/mailFolders/inbox/messages?$top=50&$orderby=receivedDateTime%20desc&$filter=receivedDateTime%20ge%20${encodeURIComponent(sinceStr)}&$select=id,subject,from,receivedDateTime,bodyPreview,body,isRead,conversationId`
+    ) as Promise<{ value: GraphMessage[] }>,
+    graphGet(
+      `/me/mailFolders/sentItems/messages?$top=50&$orderby=sentDateTime%20desc&$filter=sentDateTime%20ge%20${encodeURIComponent(sinceStr)}&$select=conversationId`
+    ) as Promise<{ value: GraphMessage[] }>,
+  ]);
 
-  const priorities = ['p1', 'p2', 'p3'] as const;
+  // Build set of conversation IDs Jeff has already replied to
+  const repliedConvIds = new Set((sentData.value || []).map((m) => m.conversationId).filter(Boolean));
 
-  const comms = messages.map((msg, i) => {
-    const rawBody = msg.body?.content || '';
-    const body = msg.body?.contentType === 'html' ? stripHtml(rawBody) : rawBody.trim();
-    return {
-      id: msg.id,
-      source: 'email' as const,
-      who: msg.from?.emailAddress?.name || msg.from?.emailAddress?.address || 'Unknown',
-      email: msg.from?.emailAddress?.address || '',
-      subject: msg.subject || '(no subject)',
-      preview: msg.bodyPreview?.slice(0, 120) || '',
-      body: (body || msg.bodyPreview || '').slice(0, 3000),
-      time: fmtRelative(msg.receivedDateTime),
-      priority: priorities[Math.min(i, 2)],
-      status: 'open' as const,
-    };
+  // Filter: not already replied, not automated
+  const candidates = (inboxData.value || []).filter((m) => {
+    if (m.conversationId && repliedConvIds.has(m.conversationId)) return false;
+    const fromAddr = m.from?.emailAddress?.address || '';
+    if (isAutomated(fromAddr, m.subject || '')) return false;
+    return true;
   });
 
-  const withBody = comms.filter((c) => c.body && c.body.length > 50).length;
-  console.log(`[syncMail] ${comms.length} emails, ${withBody} with full body`);
+  // AI scoring — use Haiku for speed/cost
+  const actionable = await scoreEmailsWithAI(candidates.map((m) => ({
+    id: m.id,
+    from: m.from?.emailAddress?.name || m.from?.emailAddress?.address || '',
+    subject: m.subject || '',
+    preview: m.bodyPreview?.slice(0, 200) || '',
+  })));
+
+  const priorities = ['p1', 'p2', 'p3'] as const;
+  let idx = 0;
+
+  const comms = candidates
+    .filter((m) => actionable.has(m.id))
+    .map((msg) => {
+      const rawBody = msg.body?.content || '';
+      const body = msg.body?.contentType === 'html' ? stripHtml(rawBody) : rawBody.trim();
+      return {
+        id: msg.id,
+        source: 'email' as const,
+        who: msg.from?.emailAddress?.name || msg.from?.emailAddress?.address || 'Unknown',
+        email: msg.from?.emailAddress?.address || '',
+        subject: msg.subject || '(no subject)',
+        preview: msg.bodyPreview?.slice(0, 120) || '',
+        body: (body || msg.bodyPreview || '').slice(0, 3000),
+        time: fmtRelative(msg.receivedDateTime),
+        priority: priorities[Math.min(idx++, 2)],
+        status: 'open' as const,
+      };
+    });
+
+  console.log(`[syncMail] ${(inboxData.value || []).length} fetched → ${candidates.length} unreplied/non-automated → ${comms.length} actionable`);
   setState({ comms });
 }
 

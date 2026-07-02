@@ -328,25 +328,43 @@ export async function syncMail(): Promise<void> {
   since.setDate(since.getDate() - 30);
   const sinceStr = since.toISOString();
 
-  const [inboxData, sentData] = await Promise.all([
-    graphGet(
-      `/me/mailFolders/inbox/messages?$top=100&$orderby=receivedDateTime%20desc&$select=id,subject,from,receivedDateTime,bodyPreview,body,isRead,conversationId`
-    ) as Promise<{ value: GraphMessage[] }>,
-    graphGet(
-      `/me/mailFolders/sentItems/messages?$top=100&$orderby=sentDateTime%20desc&$select=conversationId,sentDateTime`
-    ) as Promise<{ value: (GraphMessage & { sentDateTime?: string }) [] }>,
+  // Paginate inbox until we've seen everything within 30-day window (max 500 messages)
+  async function fetchPaged(url: string, stopBefore: Date, maxItems = 500): Promise<GraphMessage[]> {
+    const all: GraphMessage[] = [];
+    let nextUrl: string | null = url;
+    while (nextUrl && all.length < maxItems) {
+      const page = await graphGet(nextUrl) as { value: GraphMessage[]; '@odata.nextLink'?: string };
+      const items = page.value || [];
+      all.push(...items);
+      const oldest = items[items.length - 1];
+      const oldestDate = oldest?.receivedDateTime || (oldest as (GraphMessage & { sentDateTime?: string }))?.sentDateTime;
+      if (!oldestDate || new Date(oldestDate) < stopBefore) break;
+      nextUrl = page['@odata.nextLink'] || null;
+    }
+    return all;
+  }
+
+  const [inboxMessages, sentMessages] = await Promise.all([
+    fetchPaged(
+      `/me/mailFolders/inbox/messages?$top=50&$orderby=receivedDateTime%20desc&$select=id,subject,from,receivedDateTime,bodyPreview,body,isRead,conversationId`,
+      since
+    ),
+    fetchPaged(
+      `/me/mailFolders/sentItems/messages?$top=50&$orderby=sentDateTime%20desc&$select=conversationId,sentDateTime`,
+      since
+    ),
   ]);
 
   // Build set of conversation IDs Jeff has already replied to (within 30 days)
   const repliedConvIds = new Set(
-    (sentData.value || [])
-      .filter((m) => !m.sentDateTime || new Date(m.sentDateTime) >= since)
+    sentMessages
+      .filter((m) => !((m as GraphMessage & { sentDateTime?: string }).sentDateTime) || new Date((m as GraphMessage & { sentDateTime?: string }).sentDateTime!) >= since)
       .map((m) => m.conversationId)
       .filter(Boolean)
   );
 
   // Filter: within 30 days, not already replied, not automated
-  const candidates = (inboxData.value || []).filter((m) => {
+  const candidates = inboxMessages.filter((m) => {
     if (m.receivedDateTime && new Date(m.receivedDateTime) < since) return false;
     if (m.conversationId && repliedConvIds.has(m.conversationId)) return false;
     const fromAddr = m.from?.emailAddress?.address || '';
@@ -384,7 +402,7 @@ export async function syncMail(): Promise<void> {
       };
     });
 
-  console.log(`[syncMail] ${(inboxData.value || []).length} fetched → ${candidates.length} unreplied/non-automated → ${comms.length} actionable`);
+  console.log(`[syncMail] ${inboxMessages.length} fetched → ${candidates.length} unreplied/non-automated → ${comms.length} actionable`);
   setState({ comms });
 }
 

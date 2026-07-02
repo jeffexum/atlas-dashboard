@@ -7,6 +7,8 @@ import { getState, setState, persistNow } from './state.js';
 import { runAgent } from './agents.js';
 import { adlerProactiveCheck, generateBriefing } from './adler.js';
 import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, fetchEmailBody } from './outlook.js';
+import { chat, extractAndApply, saveSession, getSessions } from './whiteboard.js';
+import type { ChatMessage } from './whiteboard.js';
 import { createTelegramBot, activeChatIds, sendMorningBriefing, sendHabitReminder } from './telegram.js';
 
 const app = express();
@@ -226,6 +228,52 @@ Write a reply that matches Jeff's communication style exactly — short, casual,
   setState({ drafts: [...s.drafts, draft] });
   await persistNow();
   res.json({ ok: true, draft });
+});
+
+// ── Whiteboard ────────────────────────────────────────────────────────────────
+
+app.post('/api/whiteboard/chat', async (req: Request, res: Response) => {
+  const { history, sessionId, sessionTitle } = req.body as {
+    history: ChatMessage[];
+    sessionId: string;
+    sessionTitle?: string;
+  };
+  if (!history?.length) { res.status(400).json({ error: 'history required' }); return; }
+  try {
+    const text = await chat(history);
+    // Save session to Redis
+    await saveSession({
+      id: sessionId,
+      title: sessionTitle || history[0]?.text?.slice(0, 60) || 'Whiteboard session',
+      startedAt: Date.now(),
+      messages: history.map((m) => ({ role: m.role, text: m.text })).concat([{ role: 'assistant', text }]),
+    });
+    res.json({ text });
+  } catch (err) {
+    console.error('Whiteboard chat error:', err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/whiteboard/extract', async (req: Request, res: Response) => {
+  const { history } = req.body as { history: ChatMessage[] };
+  if (!history?.length) { res.status(400).json({ error: 'history required' }); return; }
+  try {
+    const result = await extractAndApply(history);
+    res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error('Whiteboard extract error:', err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.get('/api/whiteboard/sessions', async (_req: Request, res: Response) => {
+  try {
+    const sessions = await getSessions();
+    res.json({ sessions });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
 });
 
 app.post('/api/admin/clear-cal-note', async (_req: Request, res: Response) => {

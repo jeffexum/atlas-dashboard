@@ -6,7 +6,7 @@ import cors from 'cors';
 import { getState, setState, persistNow } from './state.js';
 import { runAgent } from './agents.js';
 import { adlerProactiveCheck, generateBriefing } from './adler.js';
-import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, fetchEmailBody } from './outlook.js';
+import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, replyToEmail, fetchEmailBody } from './outlook.js';
 import { getGoogleAuthUrl, exchangeGoogleCode, syncGoogleCalendar, isGoogleAuthenticated, loadGoogleToken } from './google.js';
 import { chat, extractAndApply, saveSession, getSessions } from './whiteboard.js';
 import type { ChatMessage } from './whiteboard.js';
@@ -175,7 +175,12 @@ app.post('/api/drafts/send', async (req: Request, res: Response) => {
   if (!draft) { res.status(404).json({ error: 'draft not found' }); return; }
   if (!isAuthenticated()) { res.status(401).json({ error: 'Not authenticated', authUrl: '/api/outlook/auth' }); return; }
   try {
-    await sendEmail(draft.to, draft.re, draft.text);
+    // Drafts linked to an inbox email send as in-thread replies, not new threads
+    if (draft.commId) {
+      await replyToEmail(draft.commId, draft.text);
+    } else {
+      await sendEmail(draft.to, draft.re, draft.text);
+    }
     setState({ drafts: s.drafts.map((d) => d.id === draftId ? { ...d, status: 'sent' as const } : d) });
     await persistNow();
     res.json({ ok: true });
@@ -206,9 +211,10 @@ app.post('/api/drafts/reply', async (req: Request, res: Response) => {
 EMAIL TO REPLY TO:
 From: ${comm.who}
 Subject: ${comm.subject}
-Preview: ${comm.preview}
 
-Write a reply that matches Jeff's communication style exactly — short, casual, direct, "Cheers, Jeff" sign-off. 1-4 sentences maximum. No subject line. Just the body text.`;
+${(comm.body || comm.preview).slice(0, 4000)}
+
+Write a reply that matches Jeff's communication and management style from the profile exactly — short, casual, direct, "Cheers, Jeff" sign-off. 1-4 sentences maximum unless the email genuinely requires more. No subject line. Just the body text.`;
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',
@@ -225,6 +231,7 @@ Write a reply that matches Jeff's communication style exactly — short, casual,
     re: comm.subject,
     text,
     status: 'ready' as const,
+    commId: comm.id, // send as in-thread reply
   };
 
   setState({ drafts: [...s.drafts, draft] });
@@ -433,6 +440,15 @@ loadPersistedState()
   })
   .then(() => loadOutlookToken())
   .then(() => loadGoogleToken())
+  .then(() => {
+    // Learn Jeff's email style once if we've never done it
+    if (isAuthenticated() && !getState().userProfile) {
+      learnUserProfile()
+        .then(() => persistNow())
+        .then(() => console.log('User style profile learned at boot'))
+        .catch((err) => console.warn('Boot profile learn failed:', (err as Error).message));
+    }
+  })
   .then(() => generateBriefing())
   .catch(() => {});
 

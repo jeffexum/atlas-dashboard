@@ -29,6 +29,8 @@ export interface Draft {
   re: string;
   text: string;
   status: 'ready' | 'sent' | 'discarded';
+  // Graph message id of the email this draft replies to — send as in-thread reply when set
+  commId?: string;
 }
 
 export interface ProposedAction {

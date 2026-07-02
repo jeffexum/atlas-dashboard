@@ -229,6 +229,15 @@ async function graphPost(path: string, body: unknown): Promise<void> {
   }
 }
 
+// Reply within the original thread via Graph — recipients, subject, and threading
+// headers all come from the original message
+export async function replyToEmail(messageId: string, body: string, replyAll = false): Promise<void> {
+  const endpoint = replyAll ? 'replyAll' : 'reply';
+  await graphPost(`/me/messages/${encodeURIComponent(messageId)}/${endpoint}`, {
+    comment: body.replace(/\n/g, '<br>'),
+  });
+}
+
 export async function sendEmail(to: string, subject: string, body: string): Promise<void> {
   // to is a display name — look up the real address from comms
   const { getState } = await import('./state.js');

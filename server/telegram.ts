@@ -7,6 +7,15 @@ import { getState } from './state.js';
 
 export const activeChatIds = new Set<number>();
 
+// Telegram Markdown rejects unescaped _ * [ etc. — fall back to plain text rather than dropping the message
+async function sendSafe(bot: TelegramBot, chatId: number, text: string): Promise<void> {
+  try {
+    await bot.sendMessage(chatId, text, { parse_mode: 'Markdown' });
+  } catch {
+    await bot.sendMessage(chatId, text);
+  }
+}
+
 const AGENT_EMOJIS: Record<string, string> = {
   planner: '📅',
   coach: '💪',
@@ -94,7 +103,7 @@ export function createTelegramBot(webhookUrl: string): TelegramBot {
     try {
       await bot.sendChatAction(chatId, 'typing');
       const reply = await runAdler(text);
-      await bot.sendMessage(chatId, reply, { parse_mode: 'Markdown' });
+      await sendSafe(bot, chatId, reply);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.error('Adler error:', err);
@@ -111,7 +120,11 @@ export async function sendMorningBriefing(bot: TelegramBot, chatId: number): Pro
   const p1Tasks = todayTasks.filter((t) => t.priority === 'p1');
   const openComms = s.comms.filter((c) => c.status === 'open');
   const habitsLogged = s.habits.filter((h) => h.completedToday).length;
-  const nextEvent = s.calEvents.filter((e) => e.date === 29).sort((a, b) => a.start - b.start)[0];
+  const today = new Date().getDate();
+  const nowHour = new Date().getHours();
+  const nextEvent = s.calEvents
+    .filter((e) => e.date === today && e.start >= nowHour)
+    .sort((a, b) => a.start - b.start)[0];
 
   const lines = [
     `☀️ *Good morning, Jeff!* Here's your briefing for today:`,

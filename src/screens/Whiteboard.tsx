@@ -114,6 +114,37 @@ export default function Whiteboard({ setScreen: _setScreen }: Props) {
     setInput('');
     setPendingFiles([]);
   }
+
+  // ── Saved sessions (Redis-backed; includes drafts pulled in via Adler's workshop_draft) ──
+  interface StoredSession { id: string; title: string; startedAt: number; messages: { role: string; text: string }[] }
+  const [sessionsOpen, setSessionsOpen] = useState(false);
+  const [sessionsList, setSessionsList] = useState<StoredSession[]>([]);
+
+  async function toggleSessions() {
+    if (!sessionsOpen) {
+      try {
+        const res = await fetch(`${API}/api/whiteboard/sessions`);
+        const json = await res.json() as { sessions: StoredSession[] };
+        setSessionsList(json.sessions || []);
+      } catch { setSessionsList([]); }
+    }
+    setSessionsOpen((v) => !v);
+  }
+
+  function loadSession(sess: StoredSession) {
+    const msgs: Message[] = sess.messages.map((m, i) => ({
+      id: i + 1,
+      role: m.role === 'user' ? 'user' as const : 'assistant' as const,
+      text: m.text,
+      ts: new Date(sess.startedAt),
+    }));
+    nextId.current = msgs.length + 1;
+    _savedMessages = msgs;
+    _savedSessionId = sess.id;
+    setMessagesRaw(msgs);
+    setSessionId(sess.id);
+    setSessionsOpen(false);
+  }
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -247,7 +278,7 @@ export default function Whiteboard({ setScreen: _setScreen }: Props) {
       onDragOver={(e) => e.preventDefault()}
     >
       {/* Toolbar */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, minHeight: 28 }}>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 8, minHeight: 28 }}>
         <button
           onClick={startNewSession}
           style={{
@@ -258,7 +289,42 @@ export default function Whiteboard({ setScreen: _setScreen }: Props) {
         >
           + New Session
         </button>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+        <div style={{ position: 'relative' }}>
+          <button
+            onClick={toggleSessions}
+            style={{
+              fontSize: 11, padding: '4px 12px', borderRadius: 6,
+              border: '1px solid var(--line)', background: 'var(--card)',
+              color: 'var(--mut)', cursor: 'pointer', fontFamily: "'Schibsted Grotesk', sans-serif",
+            }}
+          >
+            Sessions ▾
+          </button>
+          {sessionsOpen && (
+            <div style={{
+              position: 'absolute', top: 30, left: 0, zIndex: 40, width: 320,
+              background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 8,
+              boxShadow: '0 8px 24px rgba(0,0,0,0.14)', maxHeight: 320, overflowY: 'auto', padding: 4,
+            }}>
+              {sessionsList.length === 0 && (
+                <div style={{ padding: 10, fontSize: 12, color: 'var(--faint)' }}>No saved sessions yet</div>
+              )}
+              {sessionsList.map((sess) => (
+                <div
+                  key={sess.id}
+                  onClick={() => loadSession(sess)}
+                  style={{ padding: '8px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 12.5, color: 'var(--ink2)' }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg)')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                >
+                  <div style={{ fontWeight: 600, color: 'var(--ink)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sess.title}</div>
+                  <div style={{ fontSize: 10.5, color: 'var(--faint)' }}>{new Date(sess.startedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} · {sess.messages.length} messages</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginLeft: 'auto' }}>
           {extractResult && (
             <span style={{ fontSize: 11, color: 'var(--accent)' }}>
               {extractResult.tasks} task{extractResult.tasks !== 1 ? 's' : ''} + {extractResult.journal} journal entr{extractResult.journal !== 1 ? 'ies' : 'y'} added

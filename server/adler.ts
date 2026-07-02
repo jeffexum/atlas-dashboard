@@ -2,7 +2,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { getState, setState, persistNow } from './state.js';
-import * as state from './state.js';
+import { ASSISTANT_TOOLS, executeTool } from './tools.js';
 
 let _anthropic: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -32,9 +32,15 @@ TONE:
 RULES:
 - Keep messages under 4 sentences unless they ask for a briefing or you're doing an hourly check.
 - When you decide to reach out proactively, lead with the most important thing — don't bury the lede.
-- You have full access to their dashboard: tasks, habits, goals, inbox, calendar, books, ideas, journal.
-- You can add tasks, log habits, update goals. Use these tools when it makes sense — don't ask permission for small things.
+- You have full access to their dashboard: tasks, habits, goals, inbox (with email bodies), both calendars (work Outlook + personal Gmail), drafts, books, ideas, journal.
+- You can add tasks, log habits, update goals, sync data. Use these tools when it makes sense — don't ask permission for small things.
 - Never be sycophantic. If they're behind on things, say so honestly.
+
+EMAIL RULES (important):
+- When responding to an email that exists in the inbox, ALWAYS use reply_to_email (in-thread) — never send_email, which starts a new thread. Use replyAll when others were on the original.
+- Match Jeff's voice exactly — see the USER PROFILE section for his communication and management style. Short, casual, direct, "Cheers, Jeff" sign-off.
+- For anything consequential, prefer create_draft so Jeff can review on the dashboard. Send directly only when Jeff explicitly says to send.
+- If a draft needs deeper work, use workshop_draft to pull it into the Whiteboard.
 
 CONTENT LIBRARY (rotate these — connect them to what's relevant in their dashboard):
 - "The Courage to Be Disliked" — Adlerian psychology, directly relevant to your namesake
@@ -47,152 +53,6 @@ CONTENT LIBRARY (rotate these — connect them to what's relevant in their dashb
 - "Atomic Habits" ch. 3-4 — identity-based habits, when streak is breaking
 - Y Combinator: "How to Get Startup Ideas" — if side project goal is lagging
 - "Thinking in Bets" by Annie Duke — on decisions and uncertainty`;
-
-const ADLER_TOOLS: Anthropic.Tool[] = [
-  {
-    name: 'add_task',
-    description: 'Add a new task to the dashboard',
-    input_schema: { type: 'object' as const, properties: { title: { type: 'string' }, priority: { type: 'string', enum: ['p1', 'p2', 'p3'] }, category: { type: 'string', enum: ['Work', 'Personal', 'Health'] } }, required: ['title', 'priority', 'category'] },
-  },
-  {
-    name: 'edit_task',
-    description: 'Edit an existing task title, priority, or category',
-    input_schema: { type: 'object' as const, properties: { id: { type: 'string' }, title: { type: 'string' }, priority: { type: 'string', enum: ['p1', 'p2', 'p3'] }, category: { type: 'string', enum: ['Work', 'Personal', 'Health'] } }, required: ['id'] },
-  },
-  {
-    name: 'delete_task',
-    description: 'Delete a task permanently',
-    input_schema: { type: 'object' as const, properties: { id: { type: 'string' } }, required: ['id'] },
-  },
-  {
-    name: 'toggle_task',
-    description: 'Mark a task done or undone',
-    input_schema: { type: 'object' as const, properties: { id: { type: 'string' } }, required: ['id'] },
-  },
-  {
-    name: 'move_task',
-    description: 'Move a task to today, upcoming, or done',
-    input_schema: { type: 'object' as const, properties: { id: { type: 'string' }, column: { type: 'string', enum: ['today', 'upcoming', 'done'] } }, required: ['id', 'column'] },
-  },
-  {
-    name: 'log_habit',
-    description: 'Mark a habit as completed today',
-    input_schema: { type: 'object' as const, properties: { id: { type: 'string' } }, required: ['id'] },
-  },
-  {
-    name: 'update_goal',
-    description: 'Update goal progress percentage',
-    input_schema: { type: 'object' as const, properties: { id: { type: 'string' }, pct: { type: 'number' } }, required: ['id', 'pct'] },
-  },
-  {
-    name: 'add_calendar_event',
-    description: 'Add a new calendar event',
-    input_schema: { type: 'object' as const, properties: { title: { type: 'string' }, start: { type: 'number', description: 'Start hour as decimal (e.g. 9.5 = 9:30am)' }, duration: { type: 'number', description: 'Duration in hours' }, category: { type: 'string' }, date: { type: 'number', description: 'Day of month' } }, required: ['title', 'start', 'duration', 'category', 'date'] },
-  },
-  {
-    name: 'snooze_comm',
-    description: 'Snooze an inbox message',
-    input_schema: { type: 'object' as const, properties: { commId: { type: 'string' } }, required: ['commId'] },
-  },
-  {
-    name: 'add_todo_from_comm',
-    description: 'Create a task from an inbox message',
-    input_schema: { type: 'object' as const, properties: { commId: { type: 'string' } }, required: ['commId'] },
-  },
-  {
-    name: 'accept_action',
-    description: 'Accept a proposed action from the dashboard',
-    input_schema: { type: 'object' as const, properties: { actionId: { type: 'string' } }, required: ['actionId'] },
-  },
-  {
-    name: 'add_idea',
-    description: 'Add an idea to the ideas board',
-    input_schema: { type: 'object' as const, properties: { title: { type: 'string' }, body: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } } }, required: ['title', 'body', 'tags'] },
-  },
-  {
-    name: 'add_journal_entry',
-    description: 'Add a journal entry',
-    input_schema: { type: 'object' as const, properties: { text: { type: 'string' } }, required: ['text'] },
-  },
-  {
-    name: 'write_memory_section',
-    description: 'Write or update a named memory section. Use descriptive section names like "user_profile", "preferences", "patterns", "ongoing", "family", "work_context". Each section is stored independently — updating one never erases others.',
-    input_schema: { type: 'object' as const, properties: { section: { type: 'string', description: 'Section name (snake_case, e.g. "user_profile")' }, content: { type: 'string', description: 'Content to store in this section (markdown supported)' } }, required: ['section', 'content'] },
-  },
-  {
-    name: 'delete_memory_section',
-    description: 'Delete a named memory section that is no longer relevant',
-    input_schema: { type: 'object' as const, properties: { section: { type: 'string', description: 'Section name to delete' } }, required: ['section'] },
-  },
-];
-
-function applyTool(name: string, input: Record<string, unknown>): void {
-  const s = getState();
-  switch (name) {
-    case 'add_task':
-      state.addTask({ title: input.title as string, priority: input.priority as 'p1' | 'p2' | 'p3', category: input.category as string, done: false, column: 'today', agentBadge: 'Adler' });
-      break;
-    case 'edit_task':
-      state.editTask(input.id as string, {
-        ...(input.title ? { title: input.title as string } : {}),
-        ...(input.priority ? { priority: input.priority as 'p1' | 'p2' | 'p3' } : {}),
-        ...(input.category ? { category: input.category as string } : {}),
-      });
-      break;
-    case 'delete_task':
-      state.deleteTask(input.id as string);
-      break;
-    case 'toggle_task':
-      state.toggleTask(input.id as string);
-      break;
-    case 'move_task':
-      state.moveTask(input.id as string, input.column as 'today' | 'upcoming' | 'done');
-      break;
-    case 'log_habit':
-      state.toggleHabitToday(input.id as string);
-      break;
-    case 'update_goal':
-      state.updateGoalProgress(input.id as string, input.pct as number);
-      break;
-    case 'add_calendar_event': {
-      const categoryColors: Record<string, string> = { Work: 'var(--blue)', Focus: 'var(--violet)', Personal: 'var(--warm)', Health: 'var(--accent)' };
-      state.addCalEvent({ title: input.title as string, start: input.start as number, duration: input.duration as number, category: input.category as string, date: (input.date as number) || new Date().getDate(), color: categoryColors[input.category as string] || 'var(--blue)' });
-      break;
-    }
-    case 'snooze_comm':
-      state.snoozeComm(input.commId as string);
-      break;
-    case 'add_todo_from_comm':
-      state.addTodoFromComm(input.commId as string);
-      break;
-    case 'accept_action':
-      state.acceptAction(input.actionId as string);
-      break;
-    case 'add_idea': {
-      const colors = ['var(--blue)', 'var(--accent)', 'var(--violet)', 'var(--warm)', 'var(--p2)'];
-      setState({ ideas: [{ id: `i-${Date.now()}`, title: input.title as string, body: input.body as string, tags: input.tags as string[], color: colors[s.ideas.length % colors.length] }, ...s.ideas] });
-      break;
-    }
-    case 'add_journal_entry': {
-      const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      setState({ journalEntries: [{ id: `j-${Date.now()}`, date, text: input.text as string }, ...s.journalEntries] });
-      break;
-    }
-    case 'write_memory_section': {
-      const notes = { ...s.adlerNotes, [input.section as string]: input.content as string };
-      setState({ adlerNotes: notes });
-      persistNow();
-      break;
-    }
-    case 'delete_memory_section': {
-      const notes = { ...s.adlerNotes };
-      delete notes[input.section as string];
-      setState({ adlerNotes: notes });
-      persistNow();
-      break;
-    }
-  }
-}
 
 function buildContext(): string {
   const s = getState();
@@ -211,9 +71,20 @@ function buildContext(): string {
     `  [${h.id}] ${h.completedToday ? '✓' : '○'} ${h.name} — ${h.streak}🔥 streak (${h.rate}% rate)`
   );
 
-  const commLines = s.comms.filter((c) => c.status === 'open').map((c) =>
-    `  [${c.id}] ${c.priority.toUpperCase()} from ${c.who}: "${c.subject}"`
+  const commLines = s.comms.filter((c) => c.status === 'open').slice(0, 20).map((c) =>
+    `  [${c.id}] ${c.priority.toUpperCase()} from ${c.who} <${c.email || '?'}>: "${c.subject}"\n    ${(c.body || c.preview).slice(0, 400).replace(/\n/g, ' ')}`
   );
+
+  const draftLines = s.drafts.filter((d) => d.status === 'ready').map((d) =>
+    `  [${d.id}] to ${d.to}, re: "${d.re}"${d.commId ? ' (in-thread reply)' : ' (new email)'}\n    ${d.text.slice(0, 200).replace(/\n/g, ' ')}`
+  );
+
+  const today = now.getDate();
+  const calLines = s.calEvents
+    .filter((e) => e.date >= today && e.date <= today + 7)
+    .sort((a, b) => a.date - b.date || a.start - b.start)
+    .slice(0, 25)
+    .map((e) => `  ${e.date}th ${Math.floor(e.start)}:${e.start % 1 ? '30' : '00'} — ${e.title} [${e.source === 'personal' ? 'Personal/Gmail' : 'Work/Outlook'}]`);
 
   const goalLines = s.goals.map((g) =>
     `  [${g.id}] ${g.name}: ${g.pct}% — ${g.current} / ${g.target} (due ${g.deadlineShort})`
@@ -233,8 +104,17 @@ ${taskLines.join('\n') || '  none'}
 HABITS (use exact IDs for log_habit):
 ${habitLines.join('\n')}
 
-INBOX (use exact IDs for snooze_comm / add_todo_from_comm):
+INBOX — open emails with excerpts (use exact IDs for reply_to_email / read_email / snooze_comm / add_todo_from_comm):
 ${commLines.join('\n') || '  none'}
+
+PENDING DRAFTS (use exact IDs for send_draft / discard_draft / workshop_draft):
+${draftLines.join('\n') || '  none'}
+
+CALENDAR — next 7 days, both work and personal:
+${calLines.join('\n') || '  nothing scheduled'}
+
+USER PROFILE — Jeff's communication & management style (match this in every draft):
+${s.userProfile ? s.userProfile.slice(0, 3000) : '  (not learned yet — run learn_style)'}
 
 GOALS (use exact IDs for update_goal):
 ${goalLines.join('\n')}
@@ -283,12 +163,12 @@ export async function runAdler(userMessage: string): Promise<string> {
   const messages: Anthropic.MessageParam[] = [{ role: 'user', content: userMessage }];
 
   // Agentic loop — keep going until stop_reason is 'end_turn' (no more tool calls)
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 8; i++) {
     const response = await getClient().messages.create({
       model: 'claude-sonnet-4-6',
-      max_tokens: 1024,
+      max_tokens: 2048,
       system,
-      tools: ADLER_TOOLS,
+      tools: ASSISTANT_TOOLS,
       messages,
     });
 
@@ -306,8 +186,8 @@ export async function runAdler(userMessage: string): Promise<string> {
     const toolResults: Anthropic.ToolResultBlockParam[] = [];
     for (const block of response.content) {
       if (block.type === 'tool_use') {
-        applyTool(block.name, block.input as Record<string, unknown>);
-        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: 'ok' });
+        const result = await executeTool(block.name, block.input as Record<string, unknown>);
+        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
       }
     }
 

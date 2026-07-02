@@ -3,7 +3,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getState, setState, persistNow } from './state.js';
 import { addTask } from './state.js';
-import { sendEmail, isAuthenticated } from './outlook.js';
+import { ASSISTANT_TOOLS, executeTool } from './tools.js';
 
 let _anthropic: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -137,13 +137,20 @@ ${journalLines}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+PENDING DRAFTS (use exact IDs with send_draft / discard_draft):
+${s.drafts.filter((d) => d.status === 'ready').map((d) => `  [${d.id}] to ${d.to}, re: "${d.re}"${d.commId ? ' (in-thread reply)' : ''}\n${d.text}`).join('\n\n') || '  none'}
+
 YOUR ROLE ON THE WHITEBOARD:
-This is Jeff's freeform workspace. You have the full text of every open email above. Help with anything:
+This is Jeff's freeform workspace. You have the full text of every open email above, and the same tools as Adler on Telegram: manage tasks/habits/goals/journal/ideas, read and reply to email, create and send drafts, sync data.
 - Read, summarize, and reason about specific emails by sender/subject
-- Workshop draft replies — you know Jeff's voice
+- Workshop draft replies — match Jeff's voice from the user profile exactly. When a draft is finalized here, update it with create_draft (or send with send_draft / reply_to_email when Jeff says send).
 - Think through decisions with full awareness of his goals and priorities
 - Analyze uploaded documents, spreadsheets, images
 - Plan and strategize with real context
+
+EMAIL RULES:
+- Responding to an email that exists in the inbox → reply_to_email (in-thread), NEVER send_email (new thread). replyAll if others were on the original.
+- Only send when Jeff clearly says to; otherwise create_draft for his review.
 
 Be direct and genuinely useful. Use Jeff's actual data. Responses can be as long as needed. Use markdown for structure.`;
 }
@@ -197,46 +204,42 @@ export async function chat(history: ChatMessage[]): Promise<string> {
     return { role: msg.role, content: contentBlocks };
   });
 
-  const tools: Anthropic.Tool[] = [];
+  const system = buildSystemPrompt();
 
-  if (isAuthenticated()) {
-    tools.push({
-      name: 'send_email',
-      description: 'Send an email on behalf of Jeff. Use this when Jeff asks you to send an email or says "please send", "send it", "go ahead and send", etc.',
-      input_schema: {
-        type: 'object' as const,
-        properties: {
-          to: { type: 'string', description: 'Recipient email address or name (Atlas will resolve the address)' },
-          subject: { type: 'string', description: 'Email subject line' },
-          body: { type: 'string', description: 'Email body text (plain text, no HTML)' },
-        },
-        required: ['to', 'subject', 'body'],
-      },
+  // Agentic loop — same tool set as Adler on Telegram
+  for (let i = 0; i < 8; i++) {
+    const response = await getClient().messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 4096,
+      system,
+      tools: ASSISTANT_TOOLS,
+      messages,
     });
-  }
 
-  const response = await getClient().messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 4096,
-    system: buildSystemPrompt(),
-    messages,
-    ...(tools.length ? { tools } : {}),
-  });
+    messages.push({ role: 'assistant', content: response.content });
 
-  // Handle tool use — execute send_email if called
-  const toolUse = response.content.find((b) => b.type === 'tool_use');
-  if (toolUse?.type === 'tool_use' && toolUse.name === 'send_email') {
-    const input = toolUse.input as { to: string; subject: string; body: string };
-    try {
-      await sendEmail(input.to, input.subject, input.body);
-      return `✅ Email sent to **${input.to}**\n\n**Subject:** ${input.subject}\n\n${input.body}`;
-    } catch (err) {
-      return `❌ Failed to send email: ${(err as Error).message}`;
+    if (response.stop_reason === 'end_turn') {
+      const textBlock = response.content.find((b) => b.type === 'text');
+      return textBlock?.type === 'text' ? textBlock.text : '';
     }
+
+    const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    for (const block of response.content) {
+      if (block.type === 'tool_use') {
+        const result = await executeTool(block.name, block.input as Record<string, unknown>);
+        toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
+      }
+    }
+    if (toolResults.length === 0) break;
+    await persistNow();
+    messages.push({ role: 'user', content: toolResults });
   }
 
-  const textBlock = response.content.find((b) => b.type === 'text');
-  return textBlock?.type === 'text' ? textBlock.text : '';
+  const last = messages[messages.length - 1];
+  const fallback = Array.isArray(last?.content)
+    ? (last.content.find((b): b is Anthropic.TextBlockParam => b.type === 'text')?.text ?? 'Done.')
+    : 'Done.';
+  return fallback;
 }
 
 // ── Extract & apply actions from a conversation ───────────────────────────────

@@ -158,6 +158,8 @@ app.get('/api/outlook/sync', async (_req: Request, res: Response) => {
     await syncMail();
     await syncCalendar();
     res.json({ ok: true });
+    // Refresh the daily briefing against the new data (non-blocking)
+    generateBriefing().catch(() => {});
   } catch (err) {
     console.error('Outlook sync error:', err);
     res.status(500).json({ error: (err as Error).message });
@@ -343,6 +345,33 @@ app.get('/api/debug/comms', (_req: Request, res: Response) => {
     bodyLen: ((c as typeof c & { body?: string }).body || '').length,
     previewLen: c.preview.length,
   })));
+});
+
+// One-shot scrub of demo/seed data (short sequential ids like d1, a3, h2, g4, b7, i5, j1, hl2)
+app.post('/api/admin/scrub-seed', async (_req: Request, res: Response) => {
+  const seedId = /^(d|a|h|g|b|i|j|hl|t)\d{1,2}$/;
+  const s = getState();
+  const before = {
+    drafts: s.drafts.length, proposedActions: s.proposedActions.length, habits: s.habits.length,
+    goals: s.goals.length, books: s.books.length, highlights: s.highlights.length,
+    ideas: s.ideas.length, journalEntries: s.journalEntries.length, tasks: s.tasks.length,
+  };
+  setState({
+    drafts: s.drafts.filter((x) => !seedId.test(x.id)),
+    proposedActions: s.proposedActions.filter((x) => !seedId.test(x.id)),
+    habits: s.habits.filter((x) => !seedId.test(x.id)),
+    goals: s.goals.filter((x) => !seedId.test(x.id)),
+    books: s.books.filter((x) => !seedId.test(x.id)),
+    highlights: s.highlights.filter((x) => !seedId.test(x.id)),
+    ideas: s.ideas.filter((x) => !seedId.test(x.id)),
+    journalEntries: s.journalEntries.filter((x) => !seedId.test(x.id)),
+    tasks: s.tasks.filter((x) => !seedId.test(x.id)),
+  });
+  await persistNow();
+  const after = getState();
+  res.json({
+    removed: Object.fromEntries(Object.entries(before).map(([k, v]) => [k, v - (after[k as keyof typeof before] as unknown[]).length])),
+  });
 });
 
 app.post('/api/admin/clear-cal-note', async (_req: Request, res: Response) => {

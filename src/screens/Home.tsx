@@ -251,20 +251,10 @@ export default function Home({ setScreen }: HomeProps) {
           </div>
         </BentoTile>
 
-        {/* Finance — static */}
+        {/* Finance */}
         <BentoTile style={{ gridArea: 'finance' }} onClick={() => setScreen('finances')}>
           <div style={eyebrow}>Finances</div>
-          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '20px', fontWeight: 600, color: 'var(--ink)', marginBottom: '2px' }}>$148,200</div>
-          <div style={{ fontSize: '12px', color: 'oklch(0.42 0.12 150)', marginBottom: '14px' }}>+1.8% ↑ this month</div>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-              <span style={{ fontSize: '11.5px', color: 'var(--mut)' }}>Budget spent</span>
-              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: 'var(--faint)' }}>$2,043 / $2,500</span>
-            </div>
-            <div style={{ height: '5px', background: 'var(--line2)', borderRadius: '3px', overflow: 'hidden' }}>
-              <div style={{ height: '100%', width: `${(2043 / 2500) * 100}%`, background: 'var(--accent)', borderRadius: '3px' }} />
-            </div>
-          </div>
+          <div style={{ fontSize: '12px', color: 'var(--faint)', fontStyle: 'italic' }}>Connect a finance source to see balances here.</div>
         </BentoTile>
 
         {/* Goals */}

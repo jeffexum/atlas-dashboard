@@ -274,32 +274,22 @@ export async function adlerProactiveCheck(): Promise<string | null> {
 export async function generateBriefing(): Promise<void> {
   if (!process.env.ANTHROPIC_API_KEY) return;
 
-  const s = getState();
   const now = new Date();
   const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
-  const todayTasks = s.tasks.filter((t) => t.column === 'today' && !t.done);
-  const p1Tasks = todayTasks.filter((t) => t.priority === 'p1');
-  const openComms = s.comms.filter((c) => c.status === 'open');
-  const p1Comms = openComms.filter((c) => c.priority === 'p1');
-  const habitsPending = s.habits.filter((h) => !h.completedToday);
-  const nextEvent = s.calEvents.sort((a, b) => a.start - b.start)[0];
+  const prompt = `Today is ${dateStr}. You are Adler. Below is the complete current state of Jeff's world — inbox with email excerpts, pending drafts, both calendars (work Outlook + personal Gmail), tasks, habits, goals, your memory of him.
 
-  const prompt = `Today is ${dateStr}. Write a daily briefing for Jeff in the style of Adler — his personal coach.
+${buildContext()}
 
-Current state:
-- ${todayTasks.length} tasks today, ${p1Tasks.length} urgent: ${p1Tasks.map((t) => `"${t.title}"`).join(', ') || 'none'}
-- ${openComms.length} inbox messages (${p1Comms.length} urgent): ${p1Comms.map((c) => `${c.who}: "${c.subject}"`).join(', ') || 'none'}
-- Habits pending: ${habitsPending.map((h) => h.name).join(', ') || 'none — all done'}
-- Next event: ${nextEvent ? `${nextEvent.title} at ${Math.floor(nextEvent.start)}:${nextEvent.start % 1 ? '30' : '00'}` : 'nothing scheduled'}
-- Goals: ${s.goals.map((g) => `${g.name} ${g.pct}%`).join(', ')}
+Review everything above like a chief of staff and write Jeff's daily briefing — the first thing he sees on his dashboard.
 
-Write a 2-3 sentence briefing paragraph that:
-- Sounds like Adler (direct, warm, no fluff)
-- Highlights the most important thing to focus on
-- References something specific from the state above
+The briefing paragraph (3-6 sentences, Adler's voice: direct, warm, zero fluff):
+- Which emails actually need a reply from him today, by name — and which can wait
+- What's on TODAY's calendar (both work and personal), calling out conflicts or tight transitions
+- The single most important thing to get done today and why
+- Anything pending (drafts awaiting review, streaks at risk) worth a mention
 
-Then produce 3-4 short action chips (under 6 words each) summarizing key items.
+Then 3-5 short action chips (under 6 words each) for the concrete next actions.
 
 Respond with JSON only:
 {
@@ -309,8 +299,8 @@ Respond with JSON only:
 
   try {
     const response = await getClient().messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 512,
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
       messages: [{ role: 'user', content: prompt }],
     });
 

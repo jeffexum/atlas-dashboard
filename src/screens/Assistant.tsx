@@ -30,42 +30,7 @@ interface Props {
   setScreen: (s: Screen) => void;
 }
 
-const SEED: Message[] = [
-  { id: 1, role: 'user', text: "What's on my plate today?" },
-  {
-    id: 2,
-    role: 'agent',
-    text: "You have 4 tasks today, including 2 urgent items. Mark Johnson needs your Q2 budget sign-off by EOD — I've drafted a reply. Sarah Chen flagged a prod API issue at 7:52am (resolved?). Your 3pm Q2 Review needs prep, so I blocked 11am–12:30pm as a focus block.",
-    agentName: 'Planner',
-    agentKey: 'planner',
-    actions: [
-      { label: 'View tasks', kind: 'nav', target: 'todos' },
-      { label: 'Open inbox', kind: 'nav', target: 'inbox' },
-    ],
-  },
-  { id: 3, role: 'user', text: 'Add a task: call the accountant before EOD' },
-  {
-    id: 4,
-    role: 'agent',
-    text: 'Done! I\'ve added "Call the accountant" as a P1 task for today. Want me to set a reminder at 4pm?',
-    agentName: 'Planner',
-    agentKey: 'planner',
-    actions: [
-      { label: 'Set reminder', kind: 'action' },
-      { label: 'Skip', kind: 'dismiss' },
-    ],
-  },
-  {
-    id: 5,
-    role: 'agent',
-    text: "Also: your reading streak is at 21 days — keep it going tonight!",
-    agentName: 'Coach',
-    agentKey: 'coach',
-    actions: [
-      { label: 'View habits', kind: 'nav', target: 'habits' },
-    ],
-  },
-];
+const SEED: Message[] = [];
 
 function actionStyle(kind: ActionKind): React.CSSProperties {
   if (kind === 'nav') {

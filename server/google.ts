@@ -177,7 +177,15 @@ export async function syncGoogleCalendar(): Promise<void> {
     const startDate = new Date(isAllDay ? `${startStr}T00:00:00` : startStr);
     const endDate = new Date(isAllDay ? `${endStr}T00:00:00` : endStr);
 
-    const startHour = isAllDay ? 8 : startDate.getHours() + startDate.getMinutes() / 60;
+    // Server runs in UTC — convert timed events to Denver local time
+    const denver = new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Denver', hour: 'numeric', minute: 'numeric', day: 'numeric', hour12: false,
+    }).formatToParts(startDate).reduce<Record<string, number>>((acc, p) => {
+      if (p.type !== 'literal') acc[p.type] = parseInt(p.value, 10);
+      return acc;
+    }, {});
+
+    const startHour = isAllDay ? 8 : (denver.hour % 24) + denver.minute / 60;
     const durationMs = endDate.getTime() - startDate.getTime();
     // All-day events render as a 1h banner at 8am instead of a 24h+ block
     const duration = isAllDay ? 1 : Math.min(12, Math.max(0.25, durationMs / (1000 * 60 * 60)));
@@ -189,7 +197,7 @@ export async function syncGoogleCalendar(): Promise<void> {
       duration: Math.round(duration * 4) / 4,
       color: item.colorId ? (COLOR_MAP[item.colorId] || '#4285f4') : '#4285f4',
       category: 'Google Calendar',
-      date: startDate.getDate(),
+      date: isAllDay ? startDate.getDate() : denver.day,
     };
   });
 

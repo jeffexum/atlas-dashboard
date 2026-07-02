@@ -330,18 +330,24 @@ export async function syncMail(): Promise<void> {
 
   const [inboxData, sentData] = await Promise.all([
     graphGet(
-      `/me/mailFolders/inbox/messages?$top=50&$orderby=receivedDateTime%20desc&$filter=receivedDateTime%20ge%20${encodeURIComponent(sinceStr)}&$select=id,subject,from,receivedDateTime,bodyPreview,body,isRead,conversationId`
+      `/me/mailFolders/inbox/messages?$top=100&$orderby=receivedDateTime%20desc&$select=id,subject,from,receivedDateTime,bodyPreview,body,isRead,conversationId`
     ) as Promise<{ value: GraphMessage[] }>,
     graphGet(
-      `/me/mailFolders/sentItems/messages?$top=50&$orderby=sentDateTime%20desc&$filter=sentDateTime%20ge%20${encodeURIComponent(sinceStr)}&$select=conversationId`
-    ) as Promise<{ value: GraphMessage[] }>,
+      `/me/mailFolders/sentItems/messages?$top=100&$orderby=sentDateTime%20desc&$select=conversationId,sentDateTime`
+    ) as Promise<{ value: (GraphMessage & { sentDateTime?: string }) [] }>,
   ]);
 
-  // Build set of conversation IDs Jeff has already replied to
-  const repliedConvIds = new Set((sentData.value || []).map((m) => m.conversationId).filter(Boolean));
+  // Build set of conversation IDs Jeff has already replied to (within 30 days)
+  const repliedConvIds = new Set(
+    (sentData.value || [])
+      .filter((m) => !m.sentDateTime || new Date(m.sentDateTime) >= since)
+      .map((m) => m.conversationId)
+      .filter(Boolean)
+  );
 
-  // Filter: not already replied, not automated
+  // Filter: within 30 days, not already replied, not automated
   const candidates = (inboxData.value || []).filter((m) => {
+    if (m.receivedDateTime && new Date(m.receivedDateTime) < since) return false;
     if (m.conversationId && repliedConvIds.has(m.conversationId)) return false;
     const fromAddr = m.from?.emailAddress?.address || '';
     if (isAutomated(fromAddr, m.subject || '')) return false;

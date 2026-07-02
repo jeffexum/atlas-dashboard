@@ -7,6 +7,7 @@ import { getState, setState, persistNow } from './state.js';
 import { runAgent } from './agents.js';
 import { adlerProactiveCheck, generateBriefing } from './adler.js';
 import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, fetchEmailBody } from './outlook.js';
+import { getGoogleAuthUrl, exchangeGoogleCode, syncGoogleCalendar, isGoogleAuthenticated, loadGoogleToken } from './google.js';
 import { chat, extractAndApply, saveSession, getSessions } from './whiteboard.js';
 import type { ChatMessage } from './whiteboard.js';
 import { createTelegramBot, activeChatIds, sendMorningBriefing, sendHabitReminder } from './telegram.js';
@@ -230,6 +231,46 @@ Write a reply that matches Jeff's communication style exactly — short, casual,
   res.json({ ok: true, draft });
 });
 
+// ── Google Calendar ───────────────────────────────────────────────────────────
+
+app.get('/api/google/auth', (_req: Request, res: Response) => {
+  if (!process.env.GOOGLE_CLIENT_ID) {
+    res.status(503).json({ error: 'Google integration not configured' });
+    return;
+  }
+  res.redirect(getGoogleAuthUrl());
+});
+
+app.get('/api/google/callback', async (req: Request, res: Response) => {
+  const code = req.query.code as string;
+  if (!code) { res.status(400).send('Missing authorization code'); return; }
+  try {
+    await exchangeGoogleCode(code);
+    await syncGoogleCalendar();
+    res.redirect(`${FRONTEND_URL}?google=connected`);
+  } catch (err) {
+    console.error('Google OAuth error:', err);
+    res.status(500).send('Google OAuth failed: ' + (err as Error).message);
+  }
+});
+
+app.get('/api/google/sync', async (_req: Request, res: Response) => {
+  if (!isGoogleAuthenticated()) {
+    res.status(401).json({ error: 'Not authenticated', authUrl: '/api/google/auth' });
+    return;
+  }
+  try {
+    await syncGoogleCalendar();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.get('/api/google/status', (_req: Request, res: Response) => {
+  res.json({ authenticated: isGoogleAuthenticated() });
+});
+
 // ── Whiteboard ────────────────────────────────────────────────────────────────
 
 app.post('/api/whiteboard/chat', async (req: Request, res: Response) => {
@@ -381,6 +422,7 @@ loadPersistedState()
     persistNow().catch(() => {});
   })
   .then(() => loadOutlookToken())
+  .then(() => loadGoogleToken())
   .then(() => generateBriefing())
   .catch(() => {});
 

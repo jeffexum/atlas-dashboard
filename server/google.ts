@@ -1,0 +1,198 @@
+// server/google.ts — Google Calendar OAuth2 + sync
+
+import { getState, setState } from './state.js';
+import type { CalEvent } from './state.js';
+
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'https://atlas-api-fdlq.onrender.com/api/google/callback';
+
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL || process.env.UPSTASH_REDIS_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.UPSTASH_REDIS_TOKEN;
+const GOOGLE_TOKEN_KEY = 'atlas:googleToken';
+
+interface GoogleToken {
+  access_token: string;
+  refresh_token?: string;
+  expires_at: number;
+  token_type: string;
+}
+
+let _token: GoogleToken | null = null;
+
+// ── Redis helpers ─────────────────────────────────────────────────────────────
+
+async function saveToken(token: GoogleToken): Promise<void> {
+  _token = token;
+  if (!REDIS_URL || !REDIS_TOKEN) return;
+  await fetch(`${REDIS_URL}/set/${GOOGLE_TOKEN_KEY}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(JSON.stringify(token)),
+  });
+}
+
+export async function loadGoogleToken(): Promise<void> {
+  if (!REDIS_URL || !REDIS_TOKEN) return;
+  try {
+    const res = await fetch(`${REDIS_URL}/get/${GOOGLE_TOKEN_KEY}`, {
+      headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
+    });
+    const json = await res.json() as { result: string | null };
+    if (!json.result) return;
+    const parsed = JSON.parse(json.result);
+    _token = typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+    console.log('[google] Token loaded from Redis');
+  } catch (err) {
+    console.warn('[google] Failed to load token from Redis:', err);
+  }
+}
+
+// ── OAuth flow ────────────────────────────────────────────────────────────────
+
+export function isGoogleAuthenticated(): boolean {
+  return !!_token?.access_token;
+}
+
+export function getGoogleAuthUrl(): string {
+  if (!GOOGLE_CLIENT_ID) throw new Error('GOOGLE_CLIENT_ID not configured');
+  const params = new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    redirect_uri: GOOGLE_REDIRECT_URI,
+    response_type: 'code',
+    scope: 'https://www.googleapis.com/auth/calendar.readonly',
+    access_type: 'offline',
+    prompt: 'consent',
+  });
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
+}
+
+export async function exchangeGoogleCode(code: string): Promise<void> {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) throw new Error('Google OAuth not configured');
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code,
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      redirect_uri: GOOGLE_REDIRECT_URI,
+      grant_type: 'authorization_code',
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Token exchange failed: ${res.status} ${text}`);
+  }
+  const data = await res.json() as {
+    access_token: string;
+    refresh_token?: string;
+    expires_in: number;
+    token_type: string;
+  };
+  await saveToken({
+    access_token: data.access_token,
+    refresh_token: data.refresh_token,
+    expires_at: Date.now() + (data.expires_in - 60) * 1000,
+    token_type: data.token_type,
+  });
+  console.log('[google] OAuth token obtained');
+}
+
+async function getAccessToken(): Promise<string> {
+  if (!_token) throw new Error('Google not authenticated');
+  if (Date.now() < _token.expires_at) return _token.access_token;
+  if (!_token.refresh_token) throw new Error('Google token expired, no refresh token');
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) throw new Error('Google OAuth not configured');
+
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      refresh_token: _token.refresh_token,
+      grant_type: 'refresh_token',
+    }),
+  });
+  if (!res.ok) throw new Error(`Token refresh failed: ${res.status}`);
+  const data = await res.json() as { access_token: string; expires_in: number };
+  _token = {
+    ..._token,
+    access_token: data.access_token,
+    expires_at: Date.now() + (data.expires_in - 60) * 1000,
+  };
+  await saveToken(_token);
+  return _token.access_token;
+}
+
+// ── Calendar sync ─────────────────────────────────────────────────────────────
+
+interface GCalEvent {
+  id: string;
+  summary?: string;
+  start: { dateTime?: string; date?: string };
+  end: { dateTime?: string; date?: string };
+  colorId?: string;
+}
+
+const COLOR_MAP: Record<string, string> = {
+  '1': '#a4bdfc', '2': '#7ae7bf', '3': '#dbadff', '4': '#ff887c',
+  '5': '#fbd75b', '6': '#ffb878', '7': '#46d6db', '8': '#e1e1e1',
+  '9': '#5484ed', '10': '#51b749', '11': '#dc2127',
+};
+
+export async function syncGoogleCalendar(): Promise<void> {
+  const token = await getAccessToken();
+
+  // Fetch next 14 days of events
+  const now = new Date();
+  const timeMin = now.toISOString();
+  const twoWeeks = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
+  const timeMax = twoWeeks.toISOString();
+
+  const url = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events');
+  url.searchParams.set('timeMin', timeMin);
+  url.searchParams.set('timeMax', timeMax);
+  url.searchParams.set('singleEvents', 'true');
+  url.searchParams.set('orderBy', 'startTime');
+  url.searchParams.set('maxResults', '100');
+
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Google Calendar API error: ${res.status} ${text}`);
+  }
+
+  const data = await res.json() as { items: GCalEvent[] };
+  const items = data.items || [];
+
+  const calEvents: CalEvent[] = items.map((item) => {
+    const startStr = item.start.dateTime || item.start.date || '';
+    const endStr = item.end.dateTime || item.end.date || '';
+    const startDate = new Date(startStr);
+    const endDate = new Date(endStr);
+
+    const startHour = startDate.getHours() + startDate.getMinutes() / 60;
+    const durationMs = endDate.getTime() - startDate.getTime();
+    const duration = Math.max(0.25, durationMs / (1000 * 60 * 60));
+
+    return {
+      id: `gcal-${item.id}`,
+      title: item.summary || '(No title)',
+      start: startHour,
+      duration: Math.round(duration * 4) / 4,
+      color: item.colorId ? (COLOR_MAP[item.colorId] || '#4285f4') : '#4285f4',
+      category: 'Google Calendar',
+      date: startDate.getDate(),
+    };
+  });
+
+  // Merge: keep non-Google events, replace all gcal- events with fresh ones
+  const s = getState();
+  const nonGoogle = s.calEvents.filter((e) => !e.id.startsWith('gcal-'));
+  setState({ calEvents: [...nonGoogle, ...calEvents] });
+  console.log(`[syncGoogleCalendar] ${calEvents.length} events synced`);
+}

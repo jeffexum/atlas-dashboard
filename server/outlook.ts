@@ -267,7 +267,7 @@ function fmtRelative(iso?: string): string {
 }
 
 export async function fetchEmailBody(messageId: string): Promise<string> {
-  const data = await graphGet(`/me/messages/${messageId}?$select=body`) as { body?: { content?: string; contentType?: string } };
+  const data = await graphGet(`/me/messages/${encodeURIComponent(messageId)}?$select=body`) as { body?: { content?: string; contentType?: string } };
   const raw = data.body?.content || '';
   if (data.body?.contentType === 'html') {
     return raw

@@ -170,18 +170,21 @@ export async function syncGoogleCalendar(): Promise<void> {
   const items = data.items || [];
 
   const calEvents: CalEvent[] = items.map((item) => {
+    const isAllDay = !item.start.dateTime;
     const startStr = item.start.dateTime || item.start.date || '';
     const endStr = item.end.dateTime || item.end.date || '';
-    const startDate = new Date(startStr);
-    const endDate = new Date(endStr);
+    // Date-only strings parse as UTC midnight; append local time to keep the day right
+    const startDate = new Date(isAllDay ? `${startStr}T00:00:00` : startStr);
+    const endDate = new Date(isAllDay ? `${endStr}T00:00:00` : endStr);
 
-    const startHour = startDate.getHours() + startDate.getMinutes() / 60;
+    const startHour = isAllDay ? 8 : startDate.getHours() + startDate.getMinutes() / 60;
     const durationMs = endDate.getTime() - startDate.getTime();
-    const duration = Math.max(0.25, durationMs / (1000 * 60 * 60));
+    // All-day events render as a 1h banner at 8am instead of a 24h+ block
+    const duration = isAllDay ? 1 : Math.min(12, Math.max(0.25, durationMs / (1000 * 60 * 60)));
 
     return {
       id: `gcal-${item.id}`,
-      title: item.summary || '(No title)',
+      title: isAllDay ? `📅 ${item.summary || '(No title)'}` : (item.summary || '(No title)'),
       start: startHour,
       duration: Math.round(duration * 4) / 4,
       color: item.colorId ? (COLOR_MAP[item.colorId] || '#4285f4') : '#4285f4',

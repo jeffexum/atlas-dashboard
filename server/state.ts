@@ -14,8 +14,10 @@ export interface Comm {
   id: string;
   source: 'email' | 'teams';
   who: string;
+  email?: string;
   subject: string;
   preview: string;
+  body?: string;
   time: string;
   priority: 'p1' | 'p2' | 'p3';
   status: 'open' | 'snoozed';

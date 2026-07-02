@@ -3,7 +3,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getState, setState, persistNow } from './state.js';
 import { addTask } from './state.js';
-import { fetchEmailBody, isAuthenticated } from './outlook.js';
 
 let _anthropic: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -70,7 +69,7 @@ export interface ChatMessage {
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
-async function buildSystemPrompt(): Promise<string> {
+function buildSystemPrompt(): string {
   const s = getState();
   console.log(`[whiteboard] buildSystemPrompt: ${s.comms.length} comms, ${s.tasks.length} tasks, ${s.calEvents.length} calEvents`);
   const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
@@ -86,27 +85,10 @@ async function buildSystemPrompt(): Promise<string> {
     ...upcomingTasks.map((t) => `  [${t.priority.toUpperCase()}] UPCOMING: ${t.title}`),
   ].join('\n') || '  none';
 
-  // Fetch full email bodies for open comms (up to 8) if Outlook is authenticated
-  let commLines: string;
-  if (isAuthenticated() && openComms.length > 0) {
-    const bodies = await Promise.all(
-      openComms.slice(0, 8).map(async (c) => {
-        try {
-          const body = await fetchEmailBody(c.id);
-          return { c, body };
-        } catch {
-          return { c, body: c.preview };
-        }
-      })
-    );
-    commLines = bodies.map(({ c, body }) =>
-      `--- EMAIL ---\nFrom: ${c.who}\nSubject: ${c.subject}\nPriority: ${c.priority.toUpperCase()}\n\n${body}\n`
-    ).join('\n');
-  } else {
-    commLines = openComms.map((c) =>
-      `  [${c.priority.toUpperCase()}] From: ${c.who} | Subject: ${c.subject} | Preview: ${c.preview}`
-    ).join('\n') || '  none';
-  }
+  const commLines = openComms.map((c) => {
+    const content = (c as typeof c & { body?: string }).body || c.preview;
+    return `--- EMAIL ---\nFrom: ${c.who}\nSubject: ${c.subject}\nPriority: ${c.priority.toUpperCase()}\n\n${content}\n`;
+  }).join('\n') || '  none';
 
   const goalLines = activeGoals.map((g) =>
     `  ${g.name} — ${g.pct}% complete (${g.current} / ${g.target}), deadline: ${g.deadline}`
@@ -217,7 +199,7 @@ export async function chat(history: ChatMessage[]): Promise<string> {
   const response = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 4096,
-    system: await buildSystemPrompt(),
+    system: buildSystemPrompt(),
     messages,
   });
 

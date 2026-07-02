@@ -294,7 +294,7 @@ export async function syncMail(): Promise<void> {
 
   const priorities = ['p1', 'p2', 'p3'] as const;
 
-  const comms = messages.map((msg, i) => ({
+  const baseComms = messages.map((msg, i) => ({
     id: msg.id,
     source: 'email' as const,
     who: msg.from?.emailAddress?.name || msg.from?.emailAddress?.address || 'Unknown',
@@ -304,7 +304,16 @@ export async function syncMail(): Promise<void> {
     time: fmtRelative(msg.receivedDateTime),
     priority: priorities[Math.min(i, 2)],
     status: 'open' as const,
+    body: undefined as string | undefined,
   }));
+
+  // Fetch full bodies for first 8 emails in parallel
+  const bodies = await Promise.all(
+    baseComms.slice(0, 8).map(async (c) => {
+      try { return await fetchEmailBody(c.id); } catch { return undefined; }
+    })
+  );
+  const comms = baseComms.map((c, i) => ({ ...c, body: bodies[i] ?? c.preview }));
 
   setState({ comms });
 }

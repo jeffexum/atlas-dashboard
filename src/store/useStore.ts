@@ -489,7 +489,7 @@ export async function askAgent(message: string, agentHint?: string) {
   const res = await fetch(`${API_URL}/api/ask`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, agentHint, state: useStore.getState() })
+    body: JSON.stringify({ message, agentHint }),
   })
   return res.json() as Promise<{ text: string; actions: any[]; agent: string }>
 }

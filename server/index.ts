@@ -8,6 +8,7 @@ import { runAgent } from './agents.js';
 import { adlerProactiveCheck, generateBriefing } from './adler.js';
 import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, replyToEmail, fetchEmailBody } from './outlook.js';
 import { getGoogleAuthUrl, exchangeGoogleCode, syncGoogleCalendar, isGoogleAuthenticated, loadGoogleToken } from './google.js';
+import { syncOura, isOuraConfigured } from './oura.js';
 import { chat, extractAndApply, saveSession, getSessions } from './whiteboard.js';
 import type { ChatMessage } from './whiteboard.js';
 import { createTelegramBot, activeChatIds, sendMorningBriefing, sendHabitReminder } from './telegram.js';
@@ -303,6 +304,23 @@ app.get('/api/google/status', (_req: Request, res: Response) => {
   res.json({ authenticated: isGoogleAuthenticated() });
 });
 
+// ── Oura Ring ─────────────────────────────────────────────────────────────────
+
+app.get('/api/oura/status', (_req: Request, res: Response) => {
+  res.json({ configured: isOuraConfigured() });
+});
+
+app.get('/api/oura/sync', async (_req: Request, res: Response) => {
+  if (!isOuraConfigured()) { res.status(503).json({ error: 'OURA_TOKEN not configured' }); return; }
+  try {
+    await syncOura();
+    await persistNow();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 // ── Whiteboard ────────────────────────────────────────────────────────────────
 
 app.post('/api/whiteboard/chat', async (req: Request, res: Response) => {
@@ -505,8 +523,14 @@ loadPersistedState()
         .catch((err) => console.warn('Boot profile learn failed:', (err as Error).message));
     }
   })
+  .then(() => { if (isOuraConfigured()) return syncOura().catch((e) => console.warn('Oura boot sync failed:', (e as Error).message)); })
   .then(() => generateBriefing())
   .catch(() => {});
+
+// Oura re-sync every 2 hours (new sleep data lands once a day, but readiness/activity update)
+setInterval(() => {
+  if (isOuraConfigured()) syncOura().catch(() => {});
+}, 2 * 60 * 60_000);
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 

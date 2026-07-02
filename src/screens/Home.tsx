@@ -80,6 +80,8 @@ export default function Home({ setScreen }: HomeProps) {
   const goals = useStore((s) => s.goals);
   const books = useStore((s) => s.books);
   const calEvents = useStore((s) => s.calEvents);
+  const health = useStore((s) => s.health);
+  const latestHealth = health.length ? health[health.length - 1] : null;
   const briefingText = useStore((s) => s.briefingText);
   const briefingNudges = useStore((s) => s.briefingNudges);
 
@@ -226,10 +228,27 @@ export default function Home({ setScreen }: HomeProps) {
           </div>
         </BentoTile>
 
-        {/* Health — static for now, placeholder */}
+        {/* Health — Oura */}
         <BentoTile style={{ gridArea: 'health' }} onClick={() => setScreen('health')}>
           <div style={eyebrow}>Health</div>
-          <div style={{ fontSize: '12px', color: 'var(--faint)', fontStyle: 'italic' }}>Connect a health source to see stats here.</div>
+          {latestHealth ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {[
+                ['Sleep', latestHealth.sleepScore, latestHealth.sleepHours !== undefined ? `${latestHealth.sleepHours}h` : ''],
+                ['Readiness', latestHealth.readinessScore, latestHealth.hrv !== undefined ? `HRV ${latestHealth.hrv}` : ''],
+                ['Activity', latestHealth.activityScore, latestHealth.steps !== undefined ? `${latestHealth.steps.toLocaleString()} steps` : ''],
+              ].map(([label, score, detail]) => (
+                <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                  <span style={{ fontSize: '12px', color: 'var(--ink2)' }}>{label}</span>
+                  <span style={{ fontSize: '11px', color: 'var(--faint)', fontFamily: "'JetBrains Mono', monospace" }}>
+                    {detail} <strong style={{ fontSize: '13px', color: 'var(--ink)' }}>{score ?? '–'}</strong>
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div style={{ fontSize: '12px', color: 'var(--faint)', fontStyle: 'italic' }}>Connect Oura to see stats here.</div>
+          )}
         </BentoTile>
 
         {/* Reading */}

@@ -115,6 +115,9 @@ ${draftLines.join('\n') || '  none'}
 CALENDAR — next 7 days, both work and personal:
 ${calLines.join('\n') || '  nothing scheduled'}
 
+HEALTH — Oura Ring, last 3 days (most recent last):
+${s.health.slice(-3).map((h) => `  ${h.date}: sleep ${h.sleepHours ?? '?'}h (score ${h.sleepScore ?? '?'}, deep ${h.deepHours ?? '?'}h, REM ${h.remHours ?? '?'}h), readiness ${h.readinessScore ?? '?'}, HRV ${h.hrv ?? '?'}, resting HR ${h.restingHR ?? '?'}, steps ${h.steps ?? '?'}`).join('\n') || '  no data synced'}
+
 USER PROFILE — Jeff's communication & management style (match this in every draft):
 ${s.userProfile ? s.userProfile.slice(0, 3000) : '  (not learned yet — run learn_style)'}
 

@@ -9,6 +9,7 @@ import {
   learnUserProfile, fetchEmailBody,
 } from './outlook.js';
 import { syncGoogleCalendar, isGoogleAuthenticated } from './google.js';
+import { syncOura, isOuraConfigured } from './oura.js';
 
 export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   // ── Tasks ──
@@ -272,6 +273,10 @@ export async function executeTool(name: string, input: Record<string, unknown>):
           await syncGoogleCalendar();
           parts.push('Google calendar synced');
         } else parts.push('Google not connected');
+        if (isOuraConfigured()) {
+          await syncOura();
+          parts.push('Oura health data synced');
+        }
         const after = getState();
         return `${parts.join('; ')}. Now: ${after.comms.filter((c) => c.status === 'open').length} open emails, ${after.calEvents.length} calendar events.`;
       }

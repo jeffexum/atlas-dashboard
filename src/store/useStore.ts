@@ -93,6 +93,24 @@ export interface JournalEntry {
   text: string;
 }
 
+// One day of Oura Ring data
+export interface HealthDay {
+  date: string;
+  sleepScore?: number;
+  readinessScore?: number;
+  activityScore?: number;
+  sleepHours?: number;
+  deepHours?: number;
+  remHours?: number;
+  lightHours?: number;
+  efficiency?: number;
+  restingHR?: number;
+  hrv?: number;
+  tempDeviation?: number;
+  steps?: number;
+  activeCalories?: number;
+}
+
 export interface CalEvent {
   id: string;
   title: string;
@@ -122,6 +140,7 @@ interface StoreState {
   ideas: Idea[];
   journalEntries: JournalEntry[];
   calEvents: CalEvent[];
+  health: HealthDay[];
   calNote: string;
   briefingText: string;
   briefingNudges: string[];
@@ -168,6 +187,7 @@ export const useStore = create<StoreState>((set) => ({
   ideas: [],
   journalEntries: [],
   calEvents: [],
+  health: [],
   calNote: '',
   briefingText: '',
   briefingNudges: [],
@@ -531,6 +551,7 @@ function sanitizeServerState(s: Record<string, unknown>) {
     ideas: arr(s.ideas),
     journalEntries: arr(s.journalEntries),
     calEvents: arr(s.calEvents),
+    health: arr(s.health),
     briefingNudges: arr(s.briefingNudges),
   };
 }

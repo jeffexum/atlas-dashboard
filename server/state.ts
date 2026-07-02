@@ -112,6 +112,24 @@ export interface CalEvent {
   source?: 'work' | 'personal';
 }
 
+// One day of Oura Ring data (all fields optional — synced days may be partial)
+export interface HealthDay {
+  date: string; // YYYY-MM-DD
+  sleepScore?: number;
+  readinessScore?: number;
+  activityScore?: number;
+  sleepHours?: number;
+  deepHours?: number;
+  remHours?: number;
+  lightHours?: number;
+  efficiency?: number;
+  restingHR?: number;
+  hrv?: number;
+  tempDeviation?: number;
+  steps?: number;
+  activeCalories?: number;
+}
+
 export interface AdlerMessage {
   role: 'user' | 'adler';
   content: string;
@@ -130,6 +148,7 @@ export interface ServerState {
   ideas: Idea[];
   journalEntries: JournalEntry[];
   calEvents: CalEvent[];
+  health: HealthDay[];
   calNote: string;
   adlerMemory: AdlerMessage[];
   adlerNotes: Record<string, string>;
@@ -158,6 +177,7 @@ const seedState: ServerState = {
   ideas: [],
   journalEntries: [],
   calEvents: [],
+  health: [],
   calNote: '',
   adlerMemory: [],
   adlerNotes: {},
@@ -226,6 +246,7 @@ const KEYS = {
   ideas: 'atlas:ideas',
   journalEntries: 'atlas:journalEntries',
   calEvents: 'atlas:calEvents',
+  health: 'atlas:health',
   calNote: 'atlas:calNote',
   adlerNotes: 'atlas:adlerNotes',
   adlerMemory: 'atlas:adlerMemory',
@@ -267,6 +288,7 @@ export async function persistNow(): Promise<Record<string, string>> {
     trySet(KEYS.ideas, _state.ideas),
     trySet(KEYS.journalEntries, _state.journalEntries),
     trySet(KEYS.calEvents, _state.calEvents),
+    trySet(KEYS.health, _state.health),
     trySet(KEYS.calNote, _state.calNote),
     trySet(KEYS.adlerNotes, _state.adlerNotes),
     trySet(KEYS.adlerMemory, _state.adlerMemory.slice(-20)),
@@ -292,7 +314,7 @@ export async function loadPersistedState(): Promise<void> {
 
     const [
       tasks, comms, drafts, proposedActions, habits, goals, books,
-      highlights, ideas, journalEntries, calEvents, calNote,
+      highlights, ideas, journalEntries, calEvents, health, calNote,
       adlerNotes, adlerMemory, adlerLastContact,
       briefingText, briefingNudges, briefingGeneratedAt, userProfile,
     ] = await Promise.all([
@@ -307,6 +329,7 @@ export async function loadPersistedState(): Promise<void> {
       redisGet<ServerState['ideas']>(KEYS.ideas),
       redisGet<ServerState['journalEntries']>(KEYS.journalEntries),
       redisGet<ServerState['calEvents']>(KEYS.calEvents),
+      redisGet<ServerState['health']>(KEYS.health),
       redisGet<string>(KEYS.calNote),
       redisGet<ServerState['adlerNotes']>(KEYS.adlerNotes),
       redisGet<ServerState['adlerMemory']>(KEYS.adlerMemory),
@@ -329,6 +352,7 @@ export async function loadPersistedState(): Promise<void> {
       ideas: Array.isArray(ideas) ? ideas : [],
       journalEntries: Array.isArray(journalEntries) ? journalEntries : [],
       calEvents: Array.isArray(calEvents) ? calEvents : [],
+      health: Array.isArray(health) ? health : [],
       calNote: typeof calNote === 'string' ? calNote : '',
       adlerNotes: (adlerNotes && typeof adlerNotes === 'object' && !Array.isArray(adlerNotes)) ? adlerNotes : {},
       adlerMemory: Array.isArray(adlerMemory) ? adlerMemory : [],
@@ -362,7 +386,7 @@ export async function migrateLegacyState(): Promise<void> {
 
 const ARRAY_FIELDS: (keyof ServerState)[] = [
   'tasks', 'comms', 'drafts', 'proposedActions', 'habits', 'goals',
-  'books', 'highlights', 'ideas', 'journalEntries', 'calEvents',
+  'books', 'highlights', 'ideas', 'journalEntries', 'calEvents', 'health',
   'adlerMemory', 'briefingNudges',
 ];
 

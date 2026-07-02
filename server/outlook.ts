@@ -349,21 +349,21 @@ export async function syncMail(): Promise<void> {
     return all;
   }
 
-  const [inboxMessages, sentMessages] = await Promise.all([
+  const [inboxMessages, sentData] = await Promise.all([
     fetchPaged(
       `/me/mailFolders/inbox/messages?$top=50&$orderby=receivedDateTime%20desc&$select=id,subject,from,receivedDateTime,bodyPreview,body,isRead,conversationId`,
       since, 'receivedDateTime'
     ),
-    fetchPaged(
-      `/me/mailFolders/sentItems/messages?$top=50&$orderby=sentDateTime%20desc&$select=conversationId,sentDateTime`,
-      since, 'sentDateTime'
-    ),
+    // Don't paginate sent items — Graph's $skip on sentItems is unreliable; 200 covers ~30 days for most users
+    graphGet(`/me/mailFolders/sentItems/messages?$top=200&$orderby=sentDateTime%20desc&$select=conversationId,sentDateTime`) as Promise<{ value: (GraphMessage & { sentDateTime?: string })[] }>,
   ]);
+
+  const sentMessages = sentData.value || [];
 
   // Build set of conversation IDs Jeff has already replied to (within 30 days)
   const repliedConvIds = new Set(
     sentMessages
-      .filter((m) => !((m as GraphMessage & { sentDateTime?: string }).sentDateTime) || new Date((m as GraphMessage & { sentDateTime?: string }).sentDateTime!) >= since)
+      .filter((m) => !m.sentDateTime || new Date(m.sentDateTime) >= since)
       .map((m) => m.conversationId)
       .filter(Boolean)
   );

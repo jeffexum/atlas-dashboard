@@ -326,7 +326,6 @@ export async function syncMail(): Promise<void> {
   // 30-day window
   const since = new Date();
   since.setDate(since.getDate() - 30);
-  const sinceStr = since.toISOString();
 
   const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 
@@ -349,23 +348,25 @@ export async function syncMail(): Promise<void> {
     return all;
   }
 
-  const [inboxMessages, sentData] = await Promise.all([
+  interface SentMessage { conversationId?: string; sentDateTime?: string; }
+
+  const [inboxMessages, sentRaw] = await Promise.all([
     fetchPaged(
       `/me/mailFolders/inbox/messages?$top=50&$orderby=receivedDateTime%20desc&$select=id,subject,from,receivedDateTime,bodyPreview,body,isRead,conversationId`,
       since, 'receivedDateTime'
     ),
     // Don't paginate sent items — Graph's $skip on sentItems is unreliable; 200 covers ~30 days for most users
-    graphGet(`/me/mailFolders/sentItems/messages?$top=200&$orderby=sentDateTime%20desc&$select=conversationId,sentDateTime`) as Promise<{ value: (GraphMessage & { sentDateTime?: string })[] }>,
+    graphGet(`/me/mailFolders/sentItems/messages?$top=200&$orderby=sentDateTime%20desc&$select=conversationId,sentDateTime`),
   ]);
 
-  const sentMessages = sentData.value || [];
+  const sentMessages = ((sentRaw as { value?: SentMessage[] }).value) || [];
 
   // Build set of conversation IDs Jeff has already replied to (within 30 days)
   const repliedConvIds = new Set(
     sentMessages
       .filter((m) => !m.sentDateTime || new Date(m.sentDateTime) >= since)
       .map((m) => m.conversationId)
-      .filter(Boolean)
+      .filter((id): id is string => typeof id === 'string')
   );
 
   // Filter: within 30 days, not already replied, not automated

@@ -43,7 +43,7 @@ async function saveSessions(sessions: StoredSession[]): Promise<void> {
   await fetch(`${REDIS_URL}/set/${SESSIONS_KEY}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(JSON.stringify(sessions)),
+    body: JSON.stringify(sessions),
   });
 }
 

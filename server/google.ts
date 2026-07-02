@@ -28,7 +28,7 @@ async function saveToken(token: GoogleToken): Promise<void> {
   await fetch(`${REDIS_URL}/set/${GOOGLE_TOKEN_KEY}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(JSON.stringify(token)),
+    body: JSON.stringify(token),
   });
 }
 

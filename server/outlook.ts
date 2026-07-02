@@ -34,7 +34,7 @@ async function saveToken(t: TokenData): Promise<void> {
   await fetch(`${REDIS_URL}/set/${TOKEN_KEY}`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(JSON.stringify(t)),
+    body: JSON.stringify(t),
   });
 }
 
@@ -45,7 +45,13 @@ async function loadToken(): Promise<void> {
       headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
     });
     const json = await res.json() as { result: string | null };
-    if (json.result) tokenData = JSON.parse(json.result) as TokenData;
+    if (json.result) {
+      let parsed: unknown = JSON.parse(json.result);
+      // Legacy double-encoded token: parses to a string, which is truthy but has no
+      // .access_token — this made isAuthenticated() lie after every redeploy
+      if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+      tokenData = parsed as TokenData;
+    }
   } catch { /* ignore */ }
 }
 

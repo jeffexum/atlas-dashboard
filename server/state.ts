@@ -184,13 +184,23 @@ async function redisFetch(path: string, options?: RequestInit): Promise<unknown>
 }
 
 async function redisSet(key: string, value: unknown): Promise<void> {
-  await redisFetch(`/set/${key}`, { method: 'POST', body: JSON.stringify(JSON.stringify(value)) });
+  await redisFetch(`/set/${key}`, { method: 'POST', body: JSON.stringify(value) });
 }
 
 async function redisGet<T>(key: string): Promise<T | null> {
   const res = await redisFetch(`/get/${key}`) as { result: string | null } | null;
   if (!res?.result) return null;
-  return JSON.parse(res.result) as T;
+  try {
+    let parsed: unknown = JSON.parse(res.result);
+    // Legacy values were double-encoded (JSON string of a JSON string) — unwrap once more
+    if (typeof parsed === 'string') {
+      try { parsed = JSON.parse(parsed); } catch { /* genuine string value — keep as-is */ }
+    }
+    return parsed as T;
+  } catch {
+    // Value stored as raw text (not JSON) — return it verbatim
+    return res.result as unknown as T;
+  }
 }
 
 // Collections persisted as individual keys so each can grow independently

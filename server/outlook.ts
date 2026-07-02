@@ -240,6 +240,7 @@ interface GraphMessage {
   from?: { emailAddress?: { name?: string; address?: string } };
   receivedDateTime?: string;
   bodyPreview?: string;
+  body?: { content?: string; contentType?: string };
   isRead?: boolean;
   inferenceClassification?: 'focused' | 'other';
 }
@@ -269,51 +270,47 @@ function fmtRelative(iso?: string): string {
 export async function fetchEmailBody(messageId: string): Promise<string> {
   const data = await graphGet(`/me/messages/${encodeURIComponent(messageId)}?$select=body`) as { body?: { content?: string; contentType?: string } };
   const raw = data.body?.content || '';
-  if (data.body?.contentType === 'html') {
-    return raw
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/\s{2,}/g, '\n')
-      .trim();
-  }
-  return raw.trim();
+  return data.body?.contentType === 'html' ? stripHtml(raw) : raw.trim();
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/\s{2,}/g, '\n')
+    .trim();
 }
 
 export async function syncMail(): Promise<void> {
-  const data = await graphGet('/me/mailFolders/inbox/messages?$top=20&$orderby=receivedDateTime%20desc&$select=id,subject,from,receivedDateTime,bodyPreview,isRead,inferenceClassification') as { value: GraphMessage[] };
+  const data = await graphGet('/me/mailFolders/inbox/messages?$top=20&$orderby=receivedDateTime%20desc&$select=id,subject,from,receivedDateTime,bodyPreview,body,isRead,inferenceClassification') as { value: GraphMessage[] };
 
   const all = data.value || [];
-  // If any message has inferenceClassification set, filter to focused only
   const hasFocused = all.some((m) => m.inferenceClassification === 'focused');
   const messages = hasFocused ? all.filter((m) => m.inferenceClassification === 'focused') : all;
 
   const priorities = ['p1', 'p2', 'p3'] as const;
 
-  const baseComms = messages.map((msg, i) => ({
-    id: msg.id,
-    source: 'email' as const,
-    who: msg.from?.emailAddress?.name || msg.from?.emailAddress?.address || 'Unknown',
-    email: msg.from?.emailAddress?.address || '',
-    subject: msg.subject || '(no subject)',
-    preview: msg.bodyPreview?.slice(0, 120) || '',
-    time: fmtRelative(msg.receivedDateTime),
-    priority: priorities[Math.min(i, 2)],
-    status: 'open' as const,
-    body: undefined as string | undefined,
-  }));
-
-  // Fetch full bodies for first 8 emails in parallel
-  const bodies = await Promise.all(
-    baseComms.slice(0, 8).map(async (c) => {
-      try { return await fetchEmailBody(c.id); } catch { return undefined; }
-    })
-  );
-  const comms = baseComms.map((c, i) => ({ ...c, body: bodies[i] ?? c.preview }));
+  const comms = messages.map((msg, i) => {
+    const rawBody = msg.body?.content || '';
+    const body = msg.body?.contentType === 'html' ? stripHtml(rawBody) : rawBody.trim();
+    return {
+      id: msg.id,
+      source: 'email' as const,
+      who: msg.from?.emailAddress?.name || msg.from?.emailAddress?.address || 'Unknown',
+      email: msg.from?.emailAddress?.address || '',
+      subject: msg.subject || '(no subject)',
+      preview: msg.bodyPreview?.slice(0, 120) || '',
+      body: body || msg.bodyPreview || '',
+      time: fmtRelative(msg.receivedDateTime),
+      priority: priorities[Math.min(i, 2)],
+      status: 'open' as const,
+    };
+  });
 
   setState({ comms });
 }

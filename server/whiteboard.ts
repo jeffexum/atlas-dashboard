@@ -3,6 +3,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getState, setState, persistNow } from './state.js';
 import { addTask } from './state.js';
+import { sendEmail, isAuthenticated } from './outlook.js';
 
 let _anthropic: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -196,12 +197,43 @@ export async function chat(history: ChatMessage[]): Promise<string> {
     return { role: msg.role, content: contentBlocks };
   });
 
+  const tools: Anthropic.Tool[] = [];
+
+  if (isAuthenticated()) {
+    tools.push({
+      name: 'send_email',
+      description: 'Send an email on behalf of Jeff. Use this when Jeff asks you to send an email or says "please send", "send it", "go ahead and send", etc.',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          to: { type: 'string', description: 'Recipient email address or name (Atlas will resolve the address)' },
+          subject: { type: 'string', description: 'Email subject line' },
+          body: { type: 'string', description: 'Email body text (plain text, no HTML)' },
+        },
+        required: ['to', 'subject', 'body'],
+      },
+    });
+  }
+
   const response = await getClient().messages.create({
     model: 'claude-sonnet-4-6',
     max_tokens: 4096,
     system: buildSystemPrompt(),
     messages,
+    ...(tools.length ? { tools } : {}),
   });
+
+  // Handle tool use — execute send_email if called
+  const toolUse = response.content.find((b) => b.type === 'tool_use');
+  if (toolUse?.type === 'tool_use' && toolUse.name === 'send_email') {
+    const input = toolUse.input as { to: string; subject: string; body: string };
+    try {
+      await sendEmail(input.to, input.subject, input.body);
+      return `✅ Email sent to **${input.to}**\n\n**Subject:** ${input.subject}\n\n${input.body}`;
+    } catch (err) {
+      return `❌ Failed to send email: ${(err as Error).message}`;
+    }
+  }
 
   const textBlock = response.content.find((b) => b.type === 'text');
   return textBlock?.type === 'text' ? textBlock.text : '';

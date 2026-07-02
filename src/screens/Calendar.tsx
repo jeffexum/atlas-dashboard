@@ -103,6 +103,12 @@ export default function Calendar() {
   const eventDays = new Set(monthEvents.map((e) => e.date));
   const dayEvents = monthEvents.filter((e) => e.date === selectedDay);
 
+  // Personal (Gmail) events render in the right column, everything else (Outlook/manual work) on the left
+  const isPersonal = (ev: (typeof calEvents)[number]) =>
+    ev.id.startsWith('gcal-') ||
+    (ev as { source?: string }).source === 'personal' ||
+    ev.category === 'Personal';
+
   function handleTimelineClick(e: React.MouseEvent<HTMLDivElement>) {
     const target = e.target as HTMLElement;
     // Don't open if clicking on an event
@@ -198,7 +204,12 @@ export default function Calendar() {
           <button
             onClick={async () => {
               setSyncing(true);
-              try { await fetch(`${API_URL}/api/outlook/sync`); } finally { setSyncing(false); }
+              try {
+                await Promise.all([
+                  fetch(`${API_URL}/api/outlook/sync`),
+                  fetch(`${API_URL}/api/google/sync`),
+                ]);
+              } finally { setSyncing(false); }
             }}
             disabled={syncing}
             style={{
@@ -215,6 +226,40 @@ export default function Calendar() {
           >
             {syncing ? 'Syncing…' : '↻ Sync'}
           </button>
+        </div>
+
+        {/* Column headers: Work | Personal */}
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--line2)' }}>
+          <div style={{ width: 52 }} />
+          <div
+            style={{
+              flex: 1,
+              textAlign: 'center',
+              padding: '6px 0',
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: 9.5,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: 'var(--blue)',
+            }}
+          >
+            Work · Outlook
+          </div>
+          <div
+            style={{
+              flex: 1,
+              textAlign: 'center',
+              padding: '6px 0',
+              fontFamily: 'JetBrains Mono, monospace',
+              fontSize: 9.5,
+              letterSpacing: '0.08em',
+              textTransform: 'uppercase',
+              color: 'var(--accent)',
+              borderLeft: '1px solid var(--line2)',
+            }}
+          >
+            Personal · Gmail
+          </div>
         </div>
 
         {/* Timeline body */}
@@ -265,12 +310,25 @@ export default function Calendar() {
             );
           })}
 
+          {/* Center divider between Work and Personal columns */}
+          <div
+            style={{
+              position: 'absolute',
+              left: 'calc(50% + 24px)',
+              top: 0,
+              bottom: 0,
+              width: 1,
+              background: 'var(--line2)',
+            }}
+          />
+
           {/* Events */}
           {dayEvents.map((ev) => {
             const top = (ev.start - START_HOUR) * HOUR_HEIGHT;
             const height = ev.duration * HOUR_HEIGHT - 4;
             const bg = eventBgMap[ev.color] || 'rgba(80,80,80,0.1)';
             const isSelected = selectedEventId === ev.id;
+            const personal = isPersonal(ev);
             return (
               <React.Fragment key={ev.id}>
                 <div
@@ -282,8 +340,8 @@ export default function Calendar() {
                   style={{
                     position: 'absolute',
                     top,
-                    left: 60,
-                    right: 12,
+                    left: personal ? 'calc(50% + 28px)' : 60,
+                    right: personal ? 12 : 'calc(50% - 20px)',
                     height,
                     padding: '4px 8px',
                     borderRadius: 3,

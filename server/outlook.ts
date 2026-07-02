@@ -452,8 +452,12 @@ export async function syncCalendar(): Promise<void> {
       date: s.day,
       month: s.month,
       year: s.year,
+      source: 'work' as const,
     };
   });
 
-  setState({ calEvents });
+  // Merge: keep Google (personal) events, replace only Outlook ones
+  const st = getState();
+  const personal = st.calEvents.filter((e) => e.id.startsWith('gcal-'));
+  setState({ calEvents: [...personal, ...calEvents] });
 }

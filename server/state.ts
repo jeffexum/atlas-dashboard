@@ -102,6 +102,9 @@ export interface CalEvent {
   color: string;
   category: string;
   date: number;
+  month?: number;
+  year?: number;
+  source?: 'work' | 'personal';
 }
 
 export interface AdlerMessage {

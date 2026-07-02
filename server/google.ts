@@ -179,7 +179,7 @@ export async function syncGoogleCalendar(): Promise<void> {
 
     // Server runs in UTC — convert timed events to Denver local time
     const denver = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/Denver', hour: 'numeric', minute: 'numeric', day: 'numeric', hour12: false,
+      timeZone: 'America/Denver', hour: 'numeric', minute: 'numeric', day: 'numeric', month: 'numeric', year: 'numeric', hour12: false,
     }).formatToParts(startDate).reduce<Record<string, number>>((acc, p) => {
       if (p.type !== 'literal') acc[p.type] = parseInt(p.value, 10);
       return acc;
@@ -196,8 +196,11 @@ export async function syncGoogleCalendar(): Promise<void> {
       start: startHour,
       duration: Math.round(duration * 4) / 4,
       color: item.colorId ? (COLOR_MAP[item.colorId] || '#4285f4') : '#4285f4',
-      category: 'Google Calendar',
+      category: 'Personal',
       date: isAllDay ? startDate.getDate() : denver.day,
+      month: isAllDay ? startDate.getMonth() + 1 : denver.month,
+      year: isAllDay ? startDate.getFullYear() : denver.year,
+      source: 'personal' as const,
     };
   });
 

@@ -30,7 +30,10 @@ async function loadSessions(): Promise<StoredSession[]> {
       headers: { Authorization: `Bearer ${REDIS_TOKEN}` },
     });
     const json = await res.json() as { result: string | null };
-    return json.result ? JSON.parse(json.result) as StoredSession[] : [];
+    if (!json.result) return [];
+    const parsed = JSON.parse(json.result);
+    // Handle double-encoded case (stored as JSON string of a JSON string)
+    return Array.isArray(parsed) ? parsed : JSON.parse(parsed) as StoredSession[];
   } catch { return []; }
 }
 

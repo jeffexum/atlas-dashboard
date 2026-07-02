@@ -39,8 +39,18 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   },
   // ── Habits / goals ──
   {
+    name: 'add_habit',
+    description: 'Create a new habit to track (e.g. "Morning run", cadence "Daily")',
+    input_schema: { type: 'object' as const, properties: { name: { type: 'string' }, cadence: { type: 'string', description: 'e.g. Daily, Weekdays, 3x per week' } }, required: ['name'] },
+  },
+  {
+    name: 'delete_habit',
+    description: 'Delete a habit and its history permanently',
+    input_schema: { type: 'object' as const, properties: { id: { type: 'string' } }, required: ['id'] },
+  },
+  {
     name: 'log_habit',
-    description: 'Mark a habit as completed today',
+    description: 'Mark a habit as completed today (toggles — calling again un-logs it)',
     input_schema: { type: 'object' as const, properties: { id: { type: 'string' } }, required: ['id'] },
   },
   {
@@ -160,6 +170,15 @@ export async function executeTool(name: string, input: Record<string, unknown>):
       case 'move_task':
         state.moveTask(input.id as string, input.column as 'today' | 'upcoming' | 'done');
         return 'Task moved.';
+      case 'add_habit': {
+        const habit = state.addHabit(input.name as string, (input.cadence as string) || 'Daily');
+        await persistNow();
+        return `Habit "${habit.name}" created (${habit.cadence}), id ${habit.id}.`;
+      }
+      case 'delete_habit':
+        state.deleteHabit(input.id as string);
+        await persistNow();
+        return 'Habit deleted.';
       case 'log_habit':
         state.toggleHabitToday(input.id as string);
         return 'Habit logged.';

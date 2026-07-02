@@ -52,6 +52,9 @@ export interface Habit {
   pct: number;
   completedToday: boolean;
   heatmap: boolean[];
+  // Source of truth: Denver-local YYYY-MM-DD dates the habit was completed.
+  // streak/rate/pct/completedToday/heatmap are all derived from this.
+  history?: string[];
 }
 
 export interface Goal {
@@ -501,16 +504,74 @@ export function addTodoFromComm(commId: string): void {
   });
 }
 
+// ── Habits: history-based tracking (Denver-local days) ───────────────────────
+
+const HABIT_TZ = 'America/Denver';
+const DAY_MS = 86_400_000;
+
+function denverDay(d: Date = new Date()): string {
+  return d.toLocaleDateString('en-CA', { timeZone: HABIT_TZ }); // YYYY-MM-DD
+}
+
+export function recomputeHabit(h: Habit): Habit {
+  const history = [...new Set(h.history || [])].sort();
+  const done = new Set(history);
+  const today = denverDay();
+  const completedToday = done.has(today);
+
+  // Current streak: consecutive days ending today (or yesterday if today isn't logged yet)
+  let streak = 0;
+  let cursor = completedToday ? new Date() : new Date(Date.now() - DAY_MS);
+  while (done.has(denverDay(cursor))) {
+    streak++;
+    cursor = new Date(cursor.getTime() - DAY_MS);
+  }
+
+  // 30-day completion rate
+  let done30 = 0;
+  for (let i = 0; i < 30; i++) {
+    if (done.has(denverDay(new Date(Date.now() - i * DAY_MS)))) done30++;
+  }
+
+  // Heatmap: last 25 days, oldest → newest
+  const heatmap = Array.from({ length: 25 }, (_, i) =>
+    done.has(denverDay(new Date(Date.now() - (24 - i) * DAY_MS)))
+  );
+
+  return { ...h, history, completedToday, streak, rate: Math.round((done30 / 30) * 100), pct: done30 / 30, heatmap };
+}
+
+// Refresh derived fields (a new day flips completedToday/streak even with no writes)
+export function recomputeAllHabits(): void {
+  if (_state.habits.length === 0) return;
+  setState({ habits: _state.habits.map(recomputeHabit) });
+}
+
+export function addHabit(name: string, cadence: string): Habit {
+  const habit = recomputeHabit({
+    id: `hb-${Date.now()}`,
+    name,
+    cadence: cadence || 'Daily',
+    streak: 0, rate: 0, pct: 0, completedToday: false, heatmap: [],
+    history: [],
+  });
+  setState({ habits: [..._state.habits, habit] });
+  return habit;
+}
+
+export function deleteHabit(id: string): void {
+  setState({ habits: _state.habits.filter((h) => h.id !== id) });
+}
+
 export function toggleHabitToday(id: string): void {
+  const today = denverDay();
   setState({
     habits: _state.habits.map((h) => {
       if (h.id !== id) return h;
-      const completing = !h.completedToday;
-      const newStreak = completing ? h.streak + 1 : Math.max(0, h.streak - 1);
-      const newPct = completing
-        ? Math.min(1, h.pct + 1 / 7)
-        : Math.max(0, h.pct - 1 / 7);
-      return { ...h, completedToday: completing, streak: newStreak, pct: newPct };
+      const history = new Set(h.history || []);
+      if (history.has(today)) history.delete(today);
+      else history.add(today);
+      return recomputeHabit({ ...h, history: [...history] });
     }),
   });
 }

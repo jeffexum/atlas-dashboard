@@ -3,7 +3,7 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import { getState, setState, persistNow } from './state.js';
+import { getState, setState, persistNow, addHabit, deleteHabit, toggleHabitToday, recomputeAllHabits } from './state.js';
 import { runAgent } from './agents.js';
 import { adlerProactiveCheck, generateBriefing } from './adler.js';
 import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, replyToEmail, fetchEmailBody } from './outlook.js';
@@ -68,6 +68,28 @@ app.delete('/api/tasks/:id', async (req: Request, res: Response) => {
   const s = getState();
   const tasks = s.tasks.filter((t) => t.id !== id);
   setState({ tasks });
+  await persistNow();
+  res.json({ ok: true });
+});
+
+// ── Habits ────────────────────────────────────────────────────────────────────
+
+app.post('/api/habits', async (req: Request, res: Response) => {
+  const { name, cadence } = req.body as { name: string; cadence?: string };
+  if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
+  const habit = addHabit(name.trim(), cadence || 'Daily');
+  await persistNow();
+  res.json({ ok: true, habit });
+});
+
+app.post('/api/habits/:id/toggle', async (req: Request, res: Response) => {
+  toggleHabitToday(req.params.id as string);
+  await persistNow();
+  res.json({ ok: true });
+});
+
+app.delete('/api/habits/:id', async (req: Request, res: Response) => {
+  deleteHabit(req.params.id as string);
   await persistNow();
   res.json({ ok: true });
 });
@@ -448,6 +470,9 @@ setInterval(async () => {
   }
 }, 10 * 60_000);
 
+// Hourly: refresh habit derived fields so day rollover resets "done today" and streaks
+setInterval(() => recomputeAllHabits(), 60 * 60_000);
+
 // ── Morning briefing at 7am ───────────────────────────────────────────────────
 
 setInterval(() => {
@@ -468,6 +493,7 @@ loadPersistedState()
     setState({ calNote: '' });
     persistNow().catch(() => {});
   })
+  .then(() => recomputeAllHabits())
   .then(() => loadOutlookToken())
   .then(() => loadGoogleToken())
   .then(() => {

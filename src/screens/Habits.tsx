@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useStore } from '../store/useStore';
+import { useStore, addHabit, deleteHabit } from '../store/useStore';
 import type { Screen } from '../App';
 
 const cardBase: React.CSSProperties = {
@@ -38,30 +38,54 @@ function RingProgress({ streak, pct, completedToday }: { streak: number; pct: nu
   );
 }
 
+const DAY_MS = 86_400_000;
+const dayStr = (d: Date) => d.toLocaleDateString('en-CA'); // YYYY-MM-DD, browser-local
+
+// Real stats from completion history: last 70 days grid + all-time longest streak
+function statsFromHistory(history: string[] | undefined) {
+  const done = new Set(history || []);
+  const data: boolean[] = [];
+  for (let i = 69; i >= 0; i--) {
+    data.push(done.has(dayStr(new Date(Date.now() - i * DAY_MS))));
+  }
+  const sorted = [...done].sort();
+  let longest = 0, cur = 0;
+  let prev: string | null = null;
+  for (const day of sorted) {
+    if (prev && (new Date(day).getTime() - new Date(prev).getTime()) === DAY_MS) cur++;
+    else cur = 1;
+    longest = Math.max(longest, cur);
+    prev = day;
+  }
+  const last30 = data.slice(-30);
+  const monthPct = Math.round((last30.filter(Boolean).length / 30) * 100);
+  return { data, longest, monthPct, total: done.size };
+}
+
+const CADENCES = ['Daily', 'Weekdays', '3x per week', 'Weekly'];
+
 export default function Habits({ setScreen: _setScreen }: Props) {
   const habits = useStore((s) => s.habits);
   const toggleHabitToday = useStore((s) => s.toggleHabitToday);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [cadenceEdits, setCadenceEdits] = useState<Record<string, string>>({});
 
-  function getExpandedStats(heatmap: boolean[]) {
-    // Extend to 50 squares
-    const data: boolean[] = [];
-    for (let i = 0; i < 50; i++) {
-      data.push(heatmap[i % heatmap.length]);
-    }
-    // Longest streak
-    let longest = 0;
-    let current = 0;
-    for (const v of data) {
-      if (v) { current++; longest = Math.max(longest, current); }
-      else current = 0;
-    }
-    // This month pct (last 30 squares)
-    const monthSlice = data.slice(Math.max(0, data.length - 30));
-    const monthPct = Math.round((monthSlice.filter(Boolean).length / monthSlice.length) * 100);
-    return { data, longest, monthPct };
+  // Add-habit form
+  const [addOpen, setAddOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newCadence, setNewCadence] = useState('Daily');
+  const [saving, setSaving] = useState(false);
+
+  async function handleAdd() {
+    if (!newName.trim() || saving) return;
+    setSaving(true);
+    try {
+      await addHabit(newName.trim(), newCadence);
+      setNewName('');
+      setAddOpen(false);
+    } finally { setSaving(false); }
   }
+
+  const bestStreak = habits.reduce((best, h) => (h.streak > (best?.streak ?? 0) ? h : best), null as (typeof habits)[number] | null);
 
   const unloggedDailyHabits = habits.filter(
     (h) => h.cadence.toLowerCase().includes('daily') && !h.completedToday
@@ -69,35 +93,85 @@ export default function Habits({ setScreen: _setScreen }: Props) {
 
   return (
     <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-      {/* Coach callout */}
-      <div
-        style={{
-          background: 'var(--accentbg)',
-          borderRadius: 'var(--radius-card)',
-          borderLeft: '3px solid var(--accent)',
-          padding: '12px 14px',
-          display: 'flex',
-          gap: 10,
-          alignItems: 'flex-start',
-        }}
-      >
-        <span style={{ fontSize: 16, lineHeight: 1, marginTop: 2 }}>◎</span>
-        <div>
-          <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: 'var(--accent)', fontWeight: 600, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            Scout
-          </div>
-          <div style={{ fontSize: 13, lineHeight: 1.55, color: 'var(--ink2)' }}>
-            Your reading streak is at 21 days — your longest this year! Consider adding a morning
-            journaling habit to pair with meditation.
+      {/* Header: add habit + streak highlight */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <button
+          onClick={() => setAddOpen((v) => !v)}
+          style={{
+            padding: '6px 14px', fontSize: 12.5, fontWeight: 600,
+            background: addOpen ? 'transparent' : 'var(--accent)',
+            color: addOpen ? 'var(--mut)' : '#fff',
+            border: addOpen ? '1px solid var(--line)' : 'none',
+            borderRadius: 8, cursor: 'pointer', fontFamily: 'inherit',
+          }}
+        >
+          {addOpen ? 'Cancel' : '+ New habit'}
+        </button>
+        {bestStreak && bestStreak.streak > 1 && (
+          <span style={{ fontSize: 12.5, color: 'var(--mut)' }}>
+            🔥 Longest active streak: <strong style={{ color: 'var(--ink)' }}>{bestStreak.name}</strong> — {bestStreak.streak} days
+          </span>
+        )}
+      </div>
+
+      {/* Add habit form */}
+      {addOpen && (
+        <div style={{ ...cardBase, padding: '14px 16px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <input
+            autoFocus
+            type="text"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleAdd(); if (e.key === 'Escape') setAddOpen(false); }}
+            placeholder="Habit name (e.g. Morning run)"
+            style={{
+              flex: 1, minWidth: 200, border: '1px solid var(--line)', borderRadius: 6,
+              padding: '7px 10px', fontSize: 13, fontFamily: 'inherit',
+              color: 'var(--ink)', background: 'var(--bg)', outline: 'none',
+            }}
+          />
+          <select
+            value={newCadence}
+            onChange={(e) => setNewCadence(e.target.value)}
+            style={{
+              border: '1px solid var(--line)', borderRadius: 6, padding: '7px 10px',
+              fontSize: 13, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--bg)', outline: 'none',
+            }}
+          >
+            {CADENCES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <button
+            onClick={handleAdd}
+            disabled={!newName.trim() || saving}
+            style={{
+              padding: '7px 16px', fontSize: 13, fontWeight: 600, background: 'var(--accent)',
+              color: '#fff', border: 'none', borderRadius: 6,
+              cursor: newName.trim() && !saving ? 'pointer' : 'default',
+              opacity: newName.trim() && !saving ? 1 : 0.5, fontFamily: 'inherit',
+            }}
+          >
+            {saving ? 'Adding…' : 'Add'}
+          </button>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {habits.length === 0 && !addOpen && (
+        <div style={{ ...cardBase, padding: '40px 24px', textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>🌱</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ink)', marginBottom: 6 }}>No habits yet</div>
+          <div style={{ fontSize: 13, color: 'var(--mut)', lineHeight: 1.6 }}>
+            Add your first habit above — or tell Adler on Telegram, e.g. "track a morning run habit".
+            Streaks and history build from the days you actually log.
           </div>
         </div>
-      </div>
+      )}
 
       {/* Habits list */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {habits.map((habit) => {
           const isExpanded = expandedId === habit.id;
-          const { data, longest, monthPct } = getExpandedStats(habit.heatmap);
+          const { data, longest, monthPct, total } = statsFromHistory(habit.history);
 
           return (
             <div key={habit.id} style={{ ...cardBase }}>
@@ -215,13 +289,13 @@ export default function Habits({ setScreen: _setScreen }: Props) {
                     borderRadius: '0 0 var(--radius-card) var(--radius-card)',
                   }}
                 >
-                  {/* 10-week heatmap: 50 squares, 10 cols x 5 rows */}
+                  {/* 10-week heatmap: 70 real days, oldest → today */}
                   <div style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 10, color: 'var(--faint)', fontFamily: 'JetBrains Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>10-week history</div>
+                    <div style={{ fontSize: 10, color: 'var(--faint)', fontFamily: 'JetBrains Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Last 10 weeks (ends today)</div>
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(10, 12px)',
+                        gridTemplateColumns: 'repeat(14, 12px)',
                         gridTemplateRows: 'repeat(5, 12px)',
                         gap: 3,
                       }}
@@ -241,7 +315,18 @@ export default function Habits({ setScreen: _setScreen }: Props) {
                   </div>
 
                   {/* Stats mini grid */}
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 12 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+                    <div
+                      style={{
+                        background: 'var(--card)',
+                        borderRadius: 6,
+                        border: '1px solid var(--line)',
+                        padding: '8px 12px',
+                      }}
+                    >
+                      <div style={{ fontSize: 10, color: 'var(--faint)', fontFamily: 'JetBrains Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 3 }}>Total logged</div>
+                      <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 18, fontWeight: 700, color: 'var(--ink)' }}>{total}d</div>
+                    </div>
                     <div
                       style={{
                         background: 'var(--card)',
@@ -266,38 +351,22 @@ export default function Habits({ setScreen: _setScreen }: Props) {
                     </div>
                   </div>
 
-                  {/* Edit cadence */}
-                  <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 12, color: 'var(--mut)' }}>Cadence:</span>
-                    <input
-                      type="text"
-                      value={cadenceEdits[habit.id] ?? habit.cadence}
-                      onChange={(e) => setCadenceEdits((prev) => ({ ...prev, [habit.id]: e.target.value }))}
-                      style={{
-                        border: '1px solid var(--line)',
-                        borderRadius: 4,
-                        padding: '3px 8px',
-                        fontSize: 12,
-                        fontFamily: 'inherit',
-                        color: 'var(--ink)',
-                        background: 'var(--card)',
-                        outline: 'none',
-                      }}
-                    />
-                  </div>
-
                   {/* Remove button */}
                   <button
-                    disabled
-                    title="Coming soon"
+                    onClick={() => {
+                      if (window.confirm(`Delete "${habit.name}" and its history?`)) {
+                        deleteHabit(habit.id);
+                        setExpandedId(null);
+                      }
+                    }}
                     style={{
                       padding: '4px 12px',
                       fontSize: 11,
                       background: 'transparent',
-                      color: 'var(--faint)',
-                      border: '1px solid var(--line2)',
+                      color: 'var(--p1)',
+                      border: '1px solid var(--p1)',
                       borderRadius: 4,
-                      cursor: 'not-allowed',
+                      cursor: 'pointer',
                       fontFamily: 'inherit',
                     }}
                   >

@@ -48,6 +48,7 @@ export interface Habit {
   pct: number;
   completedToday: boolean;
   heatmap: boolean[];
+  history?: string[]; // Denver-local YYYY-MM-DD completion dates (server-derived)
 }
 
 export interface Goal {
@@ -342,18 +343,16 @@ export const useStore = create<StoreState>((set) => ({
     fetch(`${API}/api/tasks/${id}`, { method: 'DELETE' }).catch(() => {});
   },
 
-  toggleHabitToday: (id) =>
+  // Server-authoritative: optimistic flip locally, real recompute arrives via SSE
+  toggleHabitToday: (id) => {
     set((state) => ({
-      habits: state.habits.map((h) => {
-        if (h.id !== id) return h;
-        const completing = !h.completedToday;
-        const newStreak = completing ? h.streak + 1 : Math.max(0, h.streak - 1);
-        const newPct = completing
-          ? Math.min(1, h.pct + 1 / 7)
-          : Math.max(0, h.pct - 1 / 7);
-        return { ...h, completedToday: completing, streak: newStreak, pct: newPct };
-      }),
-    })),
+      habits: state.habits.map((h) =>
+        h.id === id ? { ...h, completedToday: !h.completedToday } : h
+      ),
+    }));
+    const API = import.meta.env.VITE_API_URL || '';
+    fetch(`${API}/api/habits/${id}/toggle`, { method: 'POST' }).catch(() => {});
+  },
 
   updateGoalProgress: (id, pct) =>
     set((state) => ({
@@ -492,6 +491,20 @@ export async function askAgent(message: string, agentHint?: string) {
     body: JSON.stringify({ message, agentHint }),
   })
   return res.json() as Promise<{ text: string; actions: any[]; agent: string }>
+}
+
+export async function addHabit(name: string, cadence: string) {
+  const API = import.meta.env.VITE_API_URL || '';
+  await fetch(`${API}/api/habits`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, cadence }),
+  }).catch(() => {});
+}
+
+export async function deleteHabit(id: string) {
+  const API = import.meta.env.VITE_API_URL || '';
+  await fetch(`${API}/api/habits/${id}`, { method: 'DELETE' }).catch(() => {});
 }
 
 export async function syncStateToServer() {

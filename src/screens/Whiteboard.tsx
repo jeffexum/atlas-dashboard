@@ -85,14 +85,35 @@ function renderInline(text: string): React.ReactNode {
 
 function genId() { return `wb-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`; }
 
+// Module-level state — survives tab switches
+let _savedMessages: Message[] = [];
+let _savedSessionId: string = genId();
+
 export default function Whiteboard({ setScreen: _setScreen }: Props) {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessagesRaw] = useState<Message[]>(_savedMessages);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<Attachment[]>([]);
   const [extracting, setExtracting] = useState(false);
   const [extractResult, setExtractResult] = useState<{ tasks: number; journal: number } | null>(null);
-  const [sessionId] = useState(genId);
+  const [sessionId, setSessionId] = useState(_savedSessionId);
+
+  function setMessages(updater: Message[] | ((prev: Message[]) => Message[])) {
+    setMessagesRaw((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      _savedMessages = next;
+      return next;
+    });
+  }
+
+  function startNewSession() {
+    _savedMessages = [];
+    _savedSessionId = genId();
+    setMessagesRaw([]);
+    setSessionId(_savedSessionId);
+    setInput('');
+    setPendingFiles([]);
+  }
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -225,28 +246,40 @@ export default function Whiteboard({ setScreen: _setScreen }: Props) {
       onDrop={handleDrop}
       onDragOver={(e) => e.preventDefault()}
     >
-      {/* Toolbar (when there are messages) */}
-      {messages.length > 0 && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginBottom: 8 }}>
-          <button
-            onClick={handleExtract}
-            disabled={extracting}
-            style={{
-              fontSize: 11, padding: '4px 12px', borderRadius: 6,
-              border: '1px solid var(--line)', background: 'var(--card)',
-              color: 'var(--ink2)', cursor: extracting ? 'default' : 'pointer',
-              opacity: extracting ? 0.6 : 1, fontFamily: "'Schibsted Grotesk', sans-serif",
-            }}
-          >
-            {extracting ? 'Extracting…' : '⬆ Save to Atlas'}
-          </button>
+      {/* Toolbar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, minHeight: 28 }}>
+        <button
+          onClick={startNewSession}
+          style={{
+            fontSize: 11, padding: '4px 12px', borderRadius: 6,
+            border: '1px solid var(--line)', background: 'var(--card)',
+            color: 'var(--mut)', cursor: 'pointer', fontFamily: "'Schibsted Grotesk', sans-serif",
+          }}
+        >
+          + New Session
+        </button>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           {extractResult && (
-            <span style={{ fontSize: 11, color: 'var(--accent)', alignSelf: 'center' }}>
+            <span style={{ fontSize: 11, color: 'var(--accent)' }}>
               {extractResult.tasks} task{extractResult.tasks !== 1 ? 's' : ''} + {extractResult.journal} journal entr{extractResult.journal !== 1 ? 'ies' : 'y'} added
             </span>
           )}
+          {messages.length > 0 && (
+            <button
+              onClick={handleExtract}
+              disabled={extracting}
+              style={{
+                fontSize: 11, padding: '4px 12px', borderRadius: 6,
+                border: '1px solid var(--line)', background: 'var(--card)',
+                color: 'var(--ink2)', cursor: extracting ? 'default' : 'pointer',
+                opacity: extracting ? 0.6 : 1, fontFamily: "'Schibsted Grotesk', sans-serif",
+              }}
+            >
+              {extracting ? 'Extracting…' : '⬆ Save to Atlas'}
+            </button>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Empty state */}
       {messages.length === 0 && !loading && (

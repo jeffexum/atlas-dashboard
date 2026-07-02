@@ -76,7 +76,7 @@ function buildSystemPrompt(): string {
 
   const todayTasks = s.tasks.filter((t) => t.column === 'today' && !t.done);
   const upcomingTasks = s.tasks.filter((t) => t.column === 'upcoming' && !t.done);
-  const openComms = s.comms.filter((c) => c.status === 'open');
+  const openComms = s.comms.filter((c) => c.status === 'open').slice(0, 5);
   const activeGoals = s.goals.filter((g) => g.pct < 100);
   const todayEvents = s.calEvents.filter((e) => e.date === new Date().getDate());
 
@@ -107,7 +107,7 @@ function buildSystemPrompt(): string {
   ).join('\n') || '  none';
 
   const profileSection = s.userProfile
-    ? `\n\nUSER PROFILE (communication style, relationships, company context):\n${s.userProfile}`
+    ? `\n\nUSER PROFILE (communication style, relationships, company context):\n${s.userProfile.slice(0, 3000)}`
     : '';
 
   return `You are Adler, Jeff's sharp and deeply context-aware AI assistant inside Atlas.

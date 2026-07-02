@@ -305,7 +305,7 @@ export async function syncMail(): Promise<void> {
       email: msg.from?.emailAddress?.address || '',
       subject: msg.subject || '(no subject)',
       preview: msg.bodyPreview?.slice(0, 120) || '',
-      body: body || msg.bodyPreview || '',
+      body: (body || msg.bodyPreview || '').slice(0, 3000),
       time: fmtRelative(msg.receivedDateTime),
       priority: priorities[Math.min(i, 2)],
       status: 'open' as const,

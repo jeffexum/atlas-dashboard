@@ -3,7 +3,7 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import { getState, setState, persistNow, addHabit, deleteHabit, toggleHabitToday, recomputeAllHabits } from './state.js';
+import { getState, setState, persistNow, addHabit, deleteHabit, toggleHabitToday, recomputeAllHabits, dismissComm, snoozeComm } from './state.js';
 import { runAgent } from './agents.js';
 import { adlerProactiveCheck, generateBriefing } from './adler.js';
 import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, replyToEmail, fetchEmailBody } from './outlook.js';
@@ -160,6 +160,18 @@ app.get('/api/outlook/callback', async (req: Request, res: Response) => {
     console.error('Outlook OAuth error:', err);
     res.status(500).send('OAuth failed: ' + (err as Error).message);
   }
+});
+
+app.post('/api/comms/:id/dismiss', async (req: Request, res: Response) => {
+  dismissComm(req.params.id as string);
+  await persistNow();
+  res.json({ ok: true });
+});
+
+app.post('/api/comms/:id/snooze', async (req: Request, res: Response) => {
+  snoozeComm(req.params.id as string);
+  await persistNow();
+  res.json({ ok: true });
 });
 
 app.get('/api/comms/:id/body', async (req: Request, res: Response) => {

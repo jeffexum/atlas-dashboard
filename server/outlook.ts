@@ -440,8 +440,15 @@ export async function syncMail(): Promise<void> {
       };
     });
 
-  console.log(`[syncMail] ${inboxMessages.length} fetched → ${candidates.length} unreplied/non-automated → ${comms.length} actionable`);
-  setState({ comms });
+  // Preserve snoozed/dismissed status across re-syncs so hidden emails stay hidden
+  const priorStatus = new Map(getState().comms.map((c) => [c.id, c.status]));
+  const merged = comms.map((c) => {
+    const prior = priorStatus.get(c.id);
+    return prior && prior !== 'open' ? { ...c, status: prior } : c;
+  });
+
+  console.log(`[syncMail] ${inboxMessages.length} fetched → ${candidates.length} unreplied/non-automated → ${merged.length} actionable`);
+  setState({ comms: merged });
 }
 
 export async function syncCalendar(): Promise<void> {

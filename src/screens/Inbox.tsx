@@ -41,7 +41,8 @@ interface Props {
 }
 
 export default function Inbox({ setScreen: _setScreen }: Props) {
-  const comms = useStore((s) => s.comms);
+  const comms = useStore((s) => s.comms).filter((c) => c.status !== 'dismissed');
+  const dismissComm = useStore((s) => s.dismissComm);
   const drafts = useStore((s) => s.drafts);
   const proposedActions = useStore((s) => s.proposedActions);
   const snoozeComm = useStore((s) => s.snoozeComm);
@@ -265,6 +266,13 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
                   </button>
                   <button style={smallBtn} onClick={() => addTodoFromComm(comm.id)}>Add to-do</button>
                   <button style={smallBtn} onClick={() => snoozeComm(comm.id)}>Snooze</button>
+                  <button
+                    style={{ ...smallBtn, marginLeft: 'auto', color: 'var(--mut)' }}
+                    title="Remove from inbox (stays in Outlook)"
+                    onClick={() => dismissComm(comm.id)}
+                  >
+                    ✕ Dismiss
+                  </button>
                 </div>
               </div>
             </div>

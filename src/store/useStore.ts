@@ -18,7 +18,7 @@ export interface Comm {
   preview: string;
   time: string;
   priority: 'p1' | 'p2' | 'p3';
-  status: 'open' | 'snoozed';
+  status: 'open' | 'snoozed' | 'dismissed';
 }
 
 export interface Draft {
@@ -153,6 +153,7 @@ interface StoreState {
   undoDiscardDraft: (id: string) => void;
   updateDraftText: (id: string, text: string) => void;
   snoozeComm: (id: string) => void;
+  dismissComm: (id: string) => void;
   addTodoFromComm: (id: string) => void;
   toggleTask: (id: string) => void;
   addTask: (task: Task) => void;
@@ -272,10 +273,21 @@ export const useStore = create<StoreState>((set) => ({
       drafts: state.drafts.map((d) => (d.id === id ? { ...d, text } : d)),
     })),
 
-  snoozeComm: (id) =>
+  snoozeComm: (id) => {
     set((state) => ({
       comms: state.comms.map((c) => (c.id === id ? { ...c, status: 'snoozed' } : c)),
-    })),
+    }));
+    const API = import.meta.env.VITE_API_URL || '';
+    fetch(`${API}/api/comms/${encodeURIComponent(id)}/snooze`, { method: 'POST' }).catch(() => {});
+  },
+
+  dismissComm: (id) => {
+    set((state) => ({
+      comms: state.comms.map((c) => (c.id === id ? { ...c, status: 'dismissed' } : c)),
+    }));
+    const API = import.meta.env.VITE_API_URL || '';
+    fetch(`${API}/api/comms/${encodeURIComponent(id)}/dismiss`, { method: 'POST' }).catch(() => {});
+  },
 
   addTodoFromComm: (id) => {
     const comm = useStore.getState().comms.find((c) => c.id === id);

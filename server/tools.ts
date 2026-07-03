@@ -103,7 +103,12 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'snooze_comm',
-    description: 'Snooze an inbox message',
+    description: 'Snooze an inbox message (dims it but keeps it visible)',
+    input_schema: { type: 'object' as const, properties: { commId: { type: 'string' } }, required: ['commId'] },
+  },
+  {
+    name: 'dismiss_comm',
+    description: 'Remove an email from the Atlas inbox view — for emails that need no response. Does NOT delete the email from Outlook, and it stays hidden across re-syncs.',
     input_schema: { type: 'object' as const, properties: { commId: { type: 'string' } }, required: ['commId'] },
   },
   {
@@ -259,6 +264,10 @@ export async function executeTool(name: string, input: Record<string, unknown>):
       case 'snooze_comm':
         state.snoozeComm(input.commId as string);
         return 'Snoozed.';
+      case 'dismiss_comm':
+        state.dismissComm(input.commId as string);
+        await persistNow();
+        return 'Removed from the Atlas inbox (still in Outlook).';
       case 'add_todo_from_comm':
         state.addTodoFromComm(input.commId as string);
         return 'Task created from email.';

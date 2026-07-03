@@ -20,7 +20,7 @@ export interface Comm {
   body?: string;
   time: string;
   priority: 'p1' | 'p2' | 'p3';
-  status: 'open' | 'snoozed';
+  status: 'open' | 'snoozed' | 'dismissed';
 }
 
 export interface Draft {
@@ -499,6 +499,12 @@ export function sendDraft(id: string): void {
 export function discardDraft(id: string): void {
   setState({
     drafts: _state.drafts.map((d) => (d.id === id ? { ...d, status: 'discarded' } : d)),
+  });
+}
+
+export function dismissComm(commId: string): void {
+  setState({
+    comms: _state.comms.map((c) => (c.id === commId ? { ...c, status: 'dismissed' as const } : c)),
   });
 }
 

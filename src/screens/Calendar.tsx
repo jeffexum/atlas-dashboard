@@ -44,9 +44,6 @@ const TOTAL_HOURS = END_HOUR - START_HOUR;
 const _now = new Date();
 const _curYear = _now.getFullYear();
 const _curMonth = _now.getMonth(); // 0-indexed
-const daysInMonth = new Date(_curYear, _curMonth + 1, 0).getDate();
-const month1DayOfWeek = new Date(_curYear, _curMonth, 1).getDay(); // 0=Sun
-const MONTH_NAME = _now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 
 const COLOR_OPTIONS = [
   { label: 'Blue', value: 'var(--blue)', hex: '#60a5fa' },
@@ -66,6 +63,24 @@ export default function Calendar() {
 
   const [selectedDay, setSelectedDay] = useState(_now.getDate());
   const [syncing, setSyncing] = useState(false);
+
+  // Month navigation for the mini calendar
+  const [viewYear, setViewYear] = useState(_curYear);
+  const [viewMonth, setViewMonth] = useState(_curMonth); // 0-indexed
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const month1DayOfWeek = new Date(viewYear, viewMonth, 1).getDay(); // 0=Sun
+  const MONTH_NAME = new Date(viewYear, viewMonth, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const isCurrentMonth = viewYear === _curYear && viewMonth === _curMonth;
+
+  function shiftMonth(delta: number) {
+    const d = new Date(viewYear, viewMonth + delta, 1);
+    setViewYear(d.getFullYear());
+    setViewMonth(d.getMonth());
+    // Land on today when returning to the current month, otherwise on the 1st
+    const backToNow = d.getFullYear() === _curYear && d.getMonth() === _curMonth;
+    setSelectedDay(backToNow ? _now.getDate() : 1);
+    setSelectedEventId(null);
+  }
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
   // Add event form state
@@ -95,9 +110,9 @@ export default function Calendar() {
     const em = (e as { month?: number }).month;
     const ey = (e as { year?: number }).year;
     if (typeof em === 'number' && typeof ey === 'number') {
-      return em === _curMonth + 1 && ey === _curYear;
+      return em === viewMonth + 1 && ey === viewYear;
     }
-    return true; // manually added events without month/year fall through
+    return isCurrentMonth; // legacy events without month/year belong to the current month
   });
 
   const eventDays = new Set(monthEvents.map((e) => e.date));
@@ -164,8 +179,8 @@ export default function Calendar() {
       color: newEventColor,
       category: newEventCategory,
       date: selectedDay,
-      month: _curMonth + 1,
-      year: _curYear,
+      month: viewMonth + 1,
+      year: viewYear,
     } as Parameters<typeof addCalEvent>[0]);
     setAddEventOpen(false);
     setNewEventTitle('');
@@ -186,7 +201,7 @@ export default function Calendar() {
     setShowAddTodo(false);
   }
 
-  const dayLabel = new Date(_curYear, _curMonth, selectedDay).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const dayLabel = new Date(viewYear, viewMonth, selectedDay).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 
   return (
     <div
@@ -700,9 +715,17 @@ export default function Calendar() {
             }}
           >
             <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--ink)' }}>{MONTH_NAME}</span>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <span style={{ fontSize: 13, color: 'var(--mut)', cursor: 'pointer', userSelect: 'none' }}>‹</span>
-              <span style={{ fontSize: 13, color: 'var(--mut)', cursor: 'pointer', userSelect: 'none' }}>›</span>
+            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+              {!isCurrentMonth && (
+                <span
+                  onClick={() => { setViewYear(_curYear); setViewMonth(_curMonth); setSelectedDay(_now.getDate()); }}
+                  style={{ fontSize: 10.5, color: 'var(--accent)', cursor: 'pointer', userSelect: 'none', marginRight: 4, fontFamily: 'JetBrains Mono, monospace' }}
+                >
+                  today
+                </span>
+              )}
+              <span onClick={() => shiftMonth(-1)} style={{ fontSize: 15, color: 'var(--mut)', cursor: 'pointer', userSelect: 'none', padding: '0 6px' }}>‹</span>
+              <span onClick={() => shiftMonth(1)} style={{ fontSize: 15, color: 'var(--mut)', cursor: 'pointer', userSelect: 'none', padding: '0 6px' }}>›</span>
             </div>
           </div>
 

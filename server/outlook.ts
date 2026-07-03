@@ -456,11 +456,13 @@ export async function syncCalendar(): Promise<void> {
   const end = new Date(now);
   end.setDate(end.getDate() + 7);
 
-  const start = now.toISOString();
+  // Fetch from the start of today (Denver) so events earlier in the day stay visible
+  const startOfDay = new Date(now.getTime() - 30 * 60 * 60_000); // generous 30h back covers TZ offset + full day
+  const start = startOfDay.toISOString();
   const endStr = end.toISOString();
 
   const data = await graphGet(
-    `/me/calendarview?startDateTime=${encodeURIComponent(start)}&endDateTime=${encodeURIComponent(endStr)}&$top=20&$orderby=start/dateTime&$select=id,subject,start,end,organizer,location,isAllDay,bodyPreview`,
+    `/me/calendarview?startDateTime=${encodeURIComponent(start)}&endDateTime=${encodeURIComponent(endStr)}&$top=50&$orderby=start/dateTime&$select=id,subject,start,end,organizer,location,isAllDay,bodyPreview`,
     { 'Prefer': 'outlook.timezone="Mountain Standard Time"' }
   ) as { value: GraphEvent[] };
 

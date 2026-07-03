@@ -147,7 +147,8 @@ export async function syncGoogleCalendar(): Promise<void> {
 
   // Fetch next 14 days of events
   const now = new Date();
-  const timeMin = now.toISOString();
+  // Start of yesterday so today's earlier events stay visible after midday syncs
+  const timeMin = new Date(now.getTime() - 30 * 60 * 60_000).toISOString();
   const twoWeeks = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
   const timeMax = twoWeeks.toISOString();
 

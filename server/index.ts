@@ -5,7 +5,7 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { getState, setState, persistNow, addHabit, deleteHabit, toggleHabitToday, recomputeAllHabits, dismissComm, snoozeComm } from './state.js';
 import { runAgent } from './agents.js';
-import { adlerProactiveCheck, generateBriefing } from './adler.js';
+import { adlerProactiveCheck, generateBriefing, runPartnerAdler } from './adler.js';
 import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, replyToEmail, fetchEmailBody } from './outlook.js';
 import { getGoogleAuthUrl, exchangeGoogleCode, syncGoogleCalendar, isGoogleAuthenticated, loadGoogleToken } from './google.js';
 import { syncOura, isOuraConfigured } from './oura.js';
@@ -374,6 +374,17 @@ app.get('/api/whiteboard/sessions', async (_req: Request, res: Response) => {
   try {
     const sessions = await getSessions();
     res.json({ sessions });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.post('/api/debug/partner-chat', async (req: Request, res: Response) => {
+  const { message, name } = req.body as { message: string; name?: string };
+  if (!message) { res.status(400).json({ error: 'message required' }); return; }
+  try {
+    const text = await runPartnerAdler(message, name || 'Lacy');
+    res.json({ text });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
   }

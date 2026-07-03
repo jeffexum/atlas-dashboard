@@ -211,6 +211,131 @@ export async function runAdler(userMessage: string): Promise<string> {
   return fallbackText;
 }
 
+// ── Partner Adler (Lacy) ──────────────────────────────────────────────────────
+// A scoped assistant for Jeff's partner: sees his schedule/tasks/habits, can add
+// todos, calendar events, and leave notes — but never sees email contents,
+// drafts, the style profile, or Adler's private memory of Jeff.
+
+const PARTNER_TOOLS: Anthropic.Tool[] = [
+  {
+    name: 'add_task',
+    description: "Add a task to Jeff's to-do list",
+    input_schema: { type: 'object' as const, properties: { title: { type: 'string' }, priority: { type: 'string', enum: ['p1', 'p2', 'p3'] } }, required: ['title'] },
+  },
+  {
+    name: 'add_calendar_event',
+    description: "Add an event to Jeff's Atlas calendar",
+    input_schema: { type: 'object' as const, properties: { title: { type: 'string' }, start: { type: 'number', description: 'Start hour as decimal (e.g. 18.5 = 6:30pm)' }, duration: { type: 'number' }, date: { type: 'number', description: 'Day of month' } }, required: ['title', 'start', 'duration', 'date'] },
+  },
+  {
+    name: 'leave_note',
+    description: 'Leave a note for Jeff — his Adler will surface it in his briefing and conversations',
+    input_schema: { type: 'object' as const, properties: { note: { type: 'string' } }, required: ['note'] },
+  },
+];
+
+function buildPartnerContext(): string {
+  const s = getState();
+  const now = new Date();
+  const TZ = 'America/Denver';
+  const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: TZ });
+  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: TZ });
+  const today = parseInt(now.toLocaleDateString('en-US', { day: 'numeric', timeZone: TZ }), 10);
+
+  const calLines = s.calEvents
+    .filter((e) => e.date >= today && e.date <= today + 7)
+    .sort((a, b) => a.date - b.date || a.start - b.start)
+    .slice(0, 25)
+    .map((e) => `  ${e.date === today ? 'TODAY' : `the ${e.date}th`} ${Math.floor(e.start)}:${e.start % 1 ? '30' : '00'} — ${e.title} (${e.source === 'personal' ? 'personal' : 'work'})`);
+
+  const taskLines = s.tasks.filter((t) => !t.done).map((t) => `  [${t.priority.toUpperCase()}] ${t.title}${t.agentBadge ? ` (${t.agentBadge})` : ''}`);
+  const habitLines = s.habits.map((h) => `  ${h.completedToday ? '✓' : '○'} ${h.name} — ${h.streak}-day streak`);
+  const openEmails = s.comms.filter((c) => c.status === 'open').length;
+
+  return `CURRENT TIME: ${timeStr} on ${dateStr} (Denver)
+
+JEFF'S CALENDAR — next 7 days:
+${calLines.join('\n') || '  nothing scheduled'}
+
+JEFF'S OPEN TASKS:
+${taskLines.join('\n') || '  none'}
+
+JEFF'S HABITS TODAY:
+${habitLines.join('\n') || '  none tracked'}
+
+INBOX: ${openEmails} open work emails (contents are private — you can share the count only)
+
+NOTES ALREADY LEFT FOR JEFF:
+${s.adlerNotes['partner_notes'] || '  none'}`;
+}
+
+export async function runPartnerAdler(userMessage: string, partnerName: string): Promise<string> {
+  if (!process.env.ANTHROPIC_API_KEY) return 'ANTHROPIC_API_KEY not configured.';
+
+  const system = `You are Adler, Jeff Williams' personal assistant. Right now you are talking to ${partnerName}, Jeff's partner — a warm, trusted person in his life.
+
+WHAT YOU CAN DO FOR ${partnerName.toUpperCase()}:
+- Answer questions about Jeff's day, schedule (work and personal calendars), tasks, and habit streaks
+- Add tasks to his to-do list (tag ideas: use the add_task tool; they'll show as "From ${partnerName}")
+- Add events to his calendar
+- Leave notes that Jeff's briefing will surface
+
+PRIVACY RULES (firm):
+- Never share the contents, senders, or subjects of Jeff's emails — you may only mention how many are open
+- Never share Jeff's drafts, his communication-style profile, or private memory
+- If asked for something outside your scope, say warmly that it's outside what you can share
+
+TONE: friendly and helpful, like a family assistant. Keep replies short — a few sentences.
+
+${buildPartnerContext()}`;
+
+  const messages: Anthropic.MessageParam[] = [{ role: 'user', content: userMessage }];
+
+  for (let i = 0; i < 5; i++) {
+    const response = await getClient().messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      system,
+      tools: PARTNER_TOOLS,
+      messages,
+    });
+
+    messages.push({ role: 'assistant', content: response.content });
+
+    if (response.stop_reason === 'end_turn') {
+      const textBlock = response.content.find((b) => b.type === 'text');
+      return textBlock?.type === 'text' ? textBlock.text : 'Done.';
+    }
+
+    const toolResults: Anthropic.ToolResultBlockParam[] = [];
+    for (const block of response.content) {
+      if (block.type !== 'tool_use') continue;
+      const input = block.input as Record<string, unknown>;
+      let result = 'ok';
+      if (block.name === 'add_task') {
+        result = await executeTool('add_task', { title: input.title, priority: input.priority || 'p2', category: 'Personal' });
+        // Re-badge so Jeff sees who added it
+        const s = getState();
+        setState({ tasks: s.tasks.map((t, i2) => i2 === s.tasks.length - 1 ? { ...t, agentBadge: `From ${partnerName}` } : t) });
+      } else if (block.name === 'add_calendar_event') {
+        result = await executeTool('add_calendar_event', { ...input, category: 'Personal' });
+      } else if (block.name === 'leave_note') {
+        const s = getState();
+        const stamp = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Denver' });
+        const existing = s.adlerNotes['partner_notes'] || '';
+        setState({ adlerNotes: { ...s.adlerNotes, partner_notes: `${existing}\n[${stamp}] ${partnerName}: ${input.note}`.trim() } });
+        result = 'Note saved — Jeff\'s Adler will surface it.';
+      }
+      toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
+    }
+    if (toolResults.length === 0) break;
+    await persistNow();
+    messages.push({ role: 'user', content: toolResults });
+  }
+
+  return 'Done.';
+}
+
 // ── Proactive hourly check ────────────────────────────────────────────────────
 
 const PROACTIVE_SYSTEM = `${ADLER_SYSTEM}

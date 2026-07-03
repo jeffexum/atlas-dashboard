@@ -2,10 +2,47 @@
 
 import TelegramBot from 'node-telegram-bot-api';
 import { runAgent } from './agents.js';
-import { runAdler } from './adler.js';
+import { runAdler, runPartnerAdler } from './adler.js';
 import { getState } from './state.js';
 
 export const activeChatIds = new Set<number>();
+
+// ── Telegram user roles (persisted to Redis) ─────────────────────────────────
+// owner = Jeff (full Adler). partner = trusted person with a scoped assistant.
+// Unknown chat ids get nothing until the owner approves them.
+
+interface TgUser { role: 'owner' | 'partner'; name: string }
+let tgUsers: Record<string, TgUser> = {};
+
+const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL || process.env.UPSTASH_REDIS_URL;
+const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.UPSTASH_REDIS_TOKEN;
+const TG_USERS_KEY = 'atlas:telegramUsers';
+
+async function loadTgUsers(): Promise<void> {
+  if (!REDIS_URL || !REDIS_TOKEN) return;
+  try {
+    const res = await fetch(`${REDIS_URL}/get/${TG_USERS_KEY}`, { headers: { Authorization: `Bearer ${REDIS_TOKEN}` } });
+    const json = await res.json() as { result: string | null };
+    if (json.result) {
+      let parsed: unknown = JSON.parse(json.result);
+      if (typeof parsed === 'string') parsed = JSON.parse(parsed);
+      tgUsers = (parsed as Record<string, TgUser>) || {};
+    }
+  } catch { /* ignore */ }
+}
+
+async function saveTgUsers(): Promise<void> {
+  if (!REDIS_URL || !REDIS_TOKEN) return;
+  await fetch(`${REDIS_URL}/set/${TG_USERS_KEY}`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(tgUsers),
+  }).catch(() => {});
+}
+
+export function ownerChatIds(): number[] {
+  return Object.entries(tgUsers).filter(([, u]) => u.role === 'owner').map(([id]) => Number(id));
+}
 
 // Telegram Markdown rejects unescaped _ * [ etc. — fall back to plain text rather than dropping the message
 async function sendSafe(bot: TelegramBot, chatId: number, text: string): Promise<void> {
@@ -32,16 +69,69 @@ export function createTelegramBot(webhookUrl: string): TelegramBot {
   }
 
   const bot = new TelegramBot(token, { webHook: { port: 0 } });
+  loadTgUsers();
 
   bot.on('message', async (msg) => {
     const chatId = msg.chat.id;
     const text = msg.text || '';
+
+    // ── Role resolution ──
+    // Bootstrap: the very first chat ever seen becomes the owner (Jeff).
+    if (Object.keys(tgUsers).length === 0) {
+      tgUsers[String(chatId)] = { role: 'owner', name: 'Jeff' };
+      await saveTgUsers();
+    }
+    const user = tgUsers[String(chatId)];
+
+    // Unknown person — no access until Jeff approves
+    if (!user) {
+      await bot.sendMessage(
+        chatId,
+        `This is a private assistant. Ask Jeff to approve you — he needs to send:\n\n/approve ${chatId} YourName`
+      );
+      return;
+    }
+
+    // Owner-only: approve/remove partners
+    if (user.role === 'owner' && text.startsWith('/approve ')) {
+      const [, id, ...nameParts] = text.split(' ');
+      const name = nameParts.join(' ').trim() || 'Partner';
+      if (!id || !/^-?\d+$/.test(id)) {
+        await bot.sendMessage(chatId, 'Usage: /approve <chatId> <name>');
+        return;
+      }
+      tgUsers[id] = { role: 'partner', name };
+      await saveTgUsers();
+      await bot.sendMessage(chatId, `✅ ${name} approved. They can now talk to their own scoped Adler — schedule, tasks, habits, notes. No email access.`);
+      bot.sendMessage(Number(id), `🎉 Jeff approved you! I'm Adler, Jeff's assistant. You can ask me about his day or schedule, add things to his to-do list or calendar, or leave him a note. What can I do for you, ${name}?`).catch(() => {});
+      return;
+    }
+    if (user.role === 'owner' && text === '/users') {
+      const lines = Object.entries(tgUsers).map(([id, u]) => `${u.name} (${u.role}) — ${id}`);
+      await bot.sendMessage(chatId, `Registered users:\n${lines.join('\n')}`);
+      return;
+    }
+
+    // ── Partner path: scoped assistant, no commands ──
+    if (user.role === 'partner') {
+      try {
+        await bot.sendChatAction(chatId, 'typing');
+        const reply = await runPartnerAdler(text, user.name);
+        await sendSafe(bot, chatId, reply);
+      } catch (err) {
+        console.error('Partner Adler error:', err);
+        await bot.sendMessage(chatId, 'Something went wrong — try again in a moment.');
+      }
+      return;
+    }
+
+    // ── Owner path (Jeff) ──
     activeChatIds.add(chatId);
 
     if (text === '/start') {
       await bot.sendMessage(
         chatId,
-        `👋 *Welcome to Atlas!*\n\nCommands:\n/tasks — Today's tasks\n/inbox — Inbox summary\n/habits — Habit streaks\n/goals — Goal progress\n/briefing — Full morning briefing\n/adler — Talk to your personal coach\n\nOr just type anything. Say "Adler, ..." to reach your coach directly.`,
+        `👋 *Welcome to Atlas!*\n\nCommands:\n/tasks — Today's tasks\n/inbox — Inbox summary\n/habits — Habit streaks\n/goals — Goal progress\n/briefing — Full morning briefing\n/approve <chatId> <name> — Give a partner scoped access\n/users — List who has access\n\nOr just type anything — Adler handles it.`,
         { parse_mode: 'Markdown' }
       );
       return;

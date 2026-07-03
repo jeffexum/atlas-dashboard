@@ -22,6 +22,9 @@ export default function App() {
   useEffect(() => {
     initFromServer();
     const unsubscribe = subscribeToServerEvents();
+    // Refresh Oura data on every page load (fire-and-forget; SSE delivers the update)
+    const API = import.meta.env.VITE_API_URL || '';
+    fetch(`${API}/api/oura/sync`).catch(() => {});
     return unsubscribe;
   }, []);
 

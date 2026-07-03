@@ -316,6 +316,27 @@ app.get('/api/google/status', (_req: Request, res: Response) => {
   res.json({ authenticated: isGoogleAuthenticated() });
 });
 
+// ── Sync everything ───────────────────────────────────────────────────────────
+
+app.post('/api/sync/all', async (_req: Request, res: Response) => {
+  const results: Record<string, string> = {};
+  if (isAuthenticated()) {
+    try { await syncMail(); await syncCalendar(); results.outlook = 'ok'; }
+    catch (err) { results.outlook = (err as Error).message; }
+  } else results.outlook = 'not connected';
+  if (isGoogleAuthenticated()) {
+    try { await syncGoogleCalendar(); results.google = 'ok'; }
+    catch (err) { results.google = (err as Error).message; }
+  } else results.google = 'not connected';
+  if (isOuraConfigured()) {
+    try { await syncOura(); results.oura = 'ok'; }
+    catch (err) { results.oura = (err as Error).message; }
+  } else results.oura = 'not configured';
+  await persistNow();
+  res.json(results);
+  generateBriefing().catch(() => {});
+});
+
 // ── Oura Ring ─────────────────────────────────────────────────────────────────
 
 app.get('/api/oura/status', (_req: Request, res: Response) => {

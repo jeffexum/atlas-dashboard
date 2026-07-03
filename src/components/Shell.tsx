@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { type Screen } from '../App';
 import { useStore } from '../store/useStore';
 import AskBar from './AskBar';
@@ -63,7 +64,20 @@ interface Props {
   setScreen: (s: Screen) => void;
 }
 
+const SYNC_API = import.meta.env.VITE_API_URL || '';
+
 export default function Shell({ screen, setScreen }: Props) {
+  const [syncing, setSyncing] = useState(false);
+
+  async function handleSyncAll() {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      await fetch(`${SYNC_API}/api/sync/all`, { method: 'POST' });
+    } finally {
+      setSyncing(false);
+    }
+  }
   const comms = useStore((s) => s.comms);
   const tasks = useStore((s) => s.tasks);
 
@@ -278,6 +292,31 @@ export default function Shell({ screen, setScreen }: Props) {
             </div>
           </div>
 
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {/* Global sync */}
+          <button
+            onClick={handleSyncAll}
+            disabled={syncing}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              padding: '6px 12px',
+              background: 'var(--card)',
+              border: '1px solid var(--line)',
+              borderRadius: 20,
+              fontSize: 12,
+              fontWeight: 500,
+              color: syncing ? 'var(--faint)' : 'var(--ink2)',
+              cursor: syncing ? 'default' : 'pointer',
+              fontFamily: 'inherit',
+            }}
+            title="Sync email, both calendars, and Oura"
+          >
+            <span style={{ display: 'inline-block', animation: syncing ? 'spin 1s linear infinite' : 'none' }}>↻</span>
+            {syncing ? 'Syncing…' : 'Sync'}
+          </button>
+
           {/* Agent pill */}
           <button
             onClick={() => setScreen('assistant')}
@@ -308,6 +347,7 @@ export default function Shell({ screen, setScreen }: Props) {
             <span style={{ color: 'var(--mut)', fontWeight: 400 }}>·</span>
             <span style={{ color: 'var(--accent)', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>ready</span>
           </button>
+          </div>
         </div>
 
         {/* Content */}

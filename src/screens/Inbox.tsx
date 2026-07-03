@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 import { useStore } from '../store/useStore';
+import type { Draft } from '../store/useStore';
 import type { Screen } from '../App';
 
 const cardBase: React.CSSProperties = {
@@ -35,6 +36,158 @@ const smallBtn: React.CSSProperties = {
   color: 'var(--ink2)',
   fontFamily: "'Schibsted Grotesk', sans-serif",
 };
+
+
+// Inline reply composer — lives inside the expanded email, with Adler refinement
+function DraftComposer({ draft, who }: { draft: Draft; who: string }) {
+  const sendDraft = useStore((s) => s.sendDraft);
+  const discardDraft = useStore((s) => s.discardDraft);
+  const saveDraftText = useStore((s) => s.saveDraftText);
+  const updateDraftText = useStore((s) => s.updateDraftText);
+  const [refineInput, setRefineInput] = useState('');
+  const [refining, setRefining] = useState(false);
+
+  async function handleRefine() {
+    if (!refineInput.trim() || refining) return;
+    setRefining(true);
+    try {
+      const res = await fetch(`${API_URL}/api/drafts/${draft.id}/refine`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instruction: refineInput.trim() }),
+      });
+      const json = await res.json() as { text?: string };
+      if (json.text) updateDraftText(draft.id, json.text);
+      setRefineInput('');
+    } finally {
+      setRefining(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        border: '1px solid var(--accent)',
+        borderRadius: 8,
+        background: 'var(--bg)',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderBottom: '1px solid var(--line2)', background: 'var(--accentbg)' }}>
+        <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--ink)' }}>✍ Reply to {who}</span>
+        <span style={{ fontSize: 10.5, color: 'var(--mut)', fontFamily: "'JetBrains Mono', monospace" }}>
+          sends in-thread
+        </span>
+      </div>
+
+      {/* Editor */}
+      <textarea
+        value={draft.text}
+        onChange={(e) => updateDraftText(draft.id, e.target.value)}
+        onBlur={(e) => saveDraftText(draft.id, e.target.value)}
+        spellCheck
+        style={{
+          width: '100%',
+          minHeight: 190,
+          padding: '14px 16px',
+          border: 'none',
+          outline: 'none',
+          resize: 'vertical',
+          fontSize: 13.5,
+          lineHeight: 1.75,
+          fontFamily: "'Schibsted Grotesk', sans-serif",
+          color: 'var(--ink)',
+          background: 'var(--card)',
+          boxSizing: 'border-box',
+          whiteSpace: 'pre-wrap',
+        }}
+      />
+
+      {/* Adler refine bar */}
+      <div style={{ display: 'flex', gap: 6, padding: '8px 12px', borderTop: '1px solid var(--line2)', alignItems: 'center' }}>
+        <span style={{ fontSize: 14 }}>◎</span>
+        <input
+          type="text"
+          value={refineInput}
+          onChange={(e) => setRefineInput(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleRefine(); }}
+          placeholder={'Tell Adler how to change it… e.g. "shorter" or "mention the wire went out Tuesday"'}
+          disabled={refining}
+          style={{
+            flex: 1,
+            border: '1px solid var(--line)',
+            borderRadius: 14,
+            padding: '5px 12px',
+            fontSize: 12.5,
+            fontFamily: 'inherit',
+            color: 'var(--ink)',
+            background: 'var(--card)',
+            outline: 'none',
+            opacity: refining ? 0.6 : 1,
+          }}
+        />
+        <button
+          onClick={handleRefine}
+          disabled={refining || !refineInput.trim()}
+          style={{
+            padding: '5px 14px',
+            fontSize: 12,
+            fontWeight: 600,
+            background: 'var(--violet)',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 14,
+            cursor: refining || !refineInput.trim() ? 'default' : 'pointer',
+            opacity: refining || !refineInput.trim() ? 0.5 : 1,
+            fontFamily: 'inherit',
+          }}
+        >
+          {refining ? 'Refining…' : 'Refine'}
+        </button>
+      </div>
+
+      {/* Footer actions */}
+      <div style={{ display: 'flex', gap: 8, padding: '10px 12px', borderTop: '1px solid var(--line2)', alignItems: 'center' }}>
+        <button
+          onClick={() => sendDraft(draft.id)}
+          style={{
+            padding: '6px 18px',
+            fontSize: 13,
+            fontWeight: 600,
+            background: 'var(--accent)',
+            color: '#fff',
+            border: 'none',
+            borderRadius: 6,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
+          Send reply
+        </button>
+        <button
+          onClick={() => discardDraft(draft.id)}
+          style={{
+            padding: '6px 14px',
+            fontSize: 12.5,
+            background: 'transparent',
+            color: 'var(--mut)',
+            border: '1px solid var(--line)',
+            borderRadius: 6,
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
+          Discard
+        </button>
+        <span style={{ fontSize: 11, color: 'var(--faint)', marginLeft: 'auto' }}>
+          Edits save automatically
+        </span>
+      </div>
+    </div>
+  );
+}
 
 interface Props {
   setScreen?: (s: Screen) => void;
@@ -126,6 +279,7 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
 
   async function handleDraftReply(commId: string) {
     setDraftedId(commId);
+    setExpandedId(commId); // composer opens inline under the email
     try {
       const res = await fetch(`${API_URL}/api/drafts/reply`, {
         method: 'POST',
@@ -139,7 +293,7 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
     } catch {
       draftReplyForComm(commId);
     }
-    setTimeout(() => setDraftedId(null), 1500);
+    setDraftedId(null);
   }
 
   return (
@@ -262,7 +416,7 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
                     }}
                     onClick={() => handleDraftReply(comm.id)}
                   >
-                    {draftedId === comm.id ? 'Draft ready ✓' : 'Draft Reply'}
+                    {draftedId === comm.id ? 'Drafting…' : 'Draft Reply'}
                   </button>
                   <button style={smallBtn} onClick={() => addTodoFromComm(comm.id)}>Add to-do</button>
                   <button style={smallBtn} onClick={() => snoozeComm(comm.id)}>Snooze</button>
@@ -274,6 +428,16 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
                     ✕ Dismiss
                   </button>
                 </div>
+
+                {/* Inline draft composer (when a ready draft exists for this email) */}
+                {expandedId === comm.id && (() => {
+                  const inlineDraft = drafts.find((d) => d.commId === comm.id && d.status === 'ready');
+                  return inlineDraft ? (
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <DraftComposer draft={inlineDraft} who={comm.who} />
+                    </div>
+                  ) : null;
+                })()}
               </div>
             </div>
           ))}

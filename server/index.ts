@@ -227,6 +227,56 @@ app.post('/api/drafts/send', async (req: Request, res: Response) => {
   }
 });
 
+// Persist manual edits to a draft
+app.patch('/api/drafts/:id', async (req: Request, res: Response) => {
+  const { text } = req.body as { text: string };
+  const s = getState();
+  if (!s.drafts.some((d) => d.id === req.params.id)) { res.status(404).json({ error: 'draft not found' }); return; }
+  setState({ drafts: s.drafts.map((d) => d.id === req.params.id ? { ...d, text } : d) });
+  await persistNow();
+  res.json({ ok: true });
+});
+
+// Adler revises a draft per instruction, with the original email as context
+app.post('/api/drafts/:id/refine', async (req: Request, res: Response) => {
+  const { instruction } = req.body as { instruction: string };
+  if (!instruction?.trim()) { res.status(400).json({ error: 'instruction required' }); return; }
+  const s = getState();
+  const draft = s.drafts.find((d) => d.id === req.params.id);
+  if (!draft) { res.status(404).json({ error: 'draft not found' }); return; }
+  const comm = draft.commId ? s.comms.find((c) => c.id === draft.commId) : undefined;
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) { res.status(503).json({ error: 'ANTHROPIC_API_KEY not configured' }); return; }
+  const Anthropic = (await import('@anthropic-ai/sdk')).default;
+  const client = new Anthropic({ apiKey });
+
+  const prompt = `You are revising an email draft written on behalf of Jeff Williams, CEO of Exum Instruments.${s.userProfile ? `\n\nJEFF'S STYLE PROFILE:\n${s.userProfile.slice(0, 3000)}` : ''}
+${comm ? `\nORIGINAL EMAIL BEING REPLIED TO (from ${comm.who}, "${comm.subject}"):\n${(comm.body || comm.preview).slice(0, 3000)}\n` : ''}
+CURRENT DRAFT:
+${draft.text}
+
+JEFF'S REVISION INSTRUCTION:
+${instruction}
+
+Rewrite the draft applying the instruction while keeping Jeff's voice. Keep the format: greeting line, blank line, short body, blank line, "Cheers,\nJeff". Return ONLY the revised reply text.`;
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-sonnet-4-6',
+      max_tokens: 1024,
+      messages: [{ role: 'user', content: prompt }],
+    });
+    const textBlock = response.content.find((b) => b.type === 'text');
+    const text = textBlock?.type === 'text' ? textBlock.text.trim() : draft.text;
+    setState({ drafts: getState().drafts.map((d) => d.id === draft.id ? { ...d, text } : d) });
+    await persistNow();
+    res.json({ ok: true, text });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 app.post('/api/drafts/reply', async (req: Request, res: Response) => {
   const { commId } = req.body as { commId: string };
   const s = getState();
@@ -251,7 +301,17 @@ Subject: ${comm.subject}
 
 ${(comm.body || comm.preview).slice(0, 4000)}
 
-Write a reply that matches Jeff's communication and management style from the profile exactly — short, casual, direct, "Cheers, Jeff" sign-off. 1-4 sentences maximum unless the email genuinely requires more. No subject line. Just the body text.`;
+Write a reply that matches Jeff's communication and management style from the profile exactly — short, casual, direct. 1-4 sentences maximum unless the email genuinely requires more.
+
+FORMAT (exactly this structure, with blank lines between parts):
+Greeting line (e.g. "Hi Mike," or just the first name)
+
+Body — one or two short paragraphs
+
+Cheers,
+Jeff
+
+No subject line. Return only the reply text.`;
 
   const response = await client.messages.create({
     model: 'claude-sonnet-4-6',

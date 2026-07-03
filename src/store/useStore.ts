@@ -28,6 +28,7 @@ export interface Draft {
   re: string;
   text: string;
   status: 'ready' | 'sent' | 'discarded';
+  commId?: string; // inbox email this replies to (sends in-thread)
 }
 
 export interface ProposedAction {
@@ -153,6 +154,7 @@ interface StoreState {
   discardDraft: (id: string) => void;
   undoDiscardDraft: (id: string) => void;
   updateDraftText: (id: string, text: string) => void;
+  saveDraftText: (id: string, text: string) => void;
   snoozeComm: (id: string) => void;
   dismissComm: (id: string) => void;
   addTodoFromComm: (id: string) => void;
@@ -273,6 +275,18 @@ export const useStore = create<StoreState>((set) => ({
     set((state) => ({
       drafts: state.drafts.map((d) => (d.id === id ? { ...d, text } : d)),
     })),
+
+  saveDraftText: (id, text) => {
+    set((state) => ({
+      drafts: state.drafts.map((d) => (d.id === id ? { ...d, text } : d)),
+    }));
+    const API = import.meta.env.VITE_API_URL || '';
+    fetch(`${API}/api/drafts/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    }).catch(() => {});
+  },
 
   snoozeComm: (id) => {
     set((state) => ({

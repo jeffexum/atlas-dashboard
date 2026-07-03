@@ -21,6 +21,18 @@ const priorityBg = (p: string) => {
   return 'var(--bg)';
 };
 
+function dueBadge(dueDate?: string): { label: string; color: string; bg: string } | null {
+  if (!dueDate) return null;
+  const today = new Date(); today.setHours(12, 0, 0, 0);
+  const due = new Date(`${dueDate}T12:00:00`);
+  const days = Math.round((due.getTime() - today.getTime()) / 86_400_000);
+  if (days < 0) return { label: `overdue ${-days}d`, color: 'oklch(0.5 0.19 27)', bg: 'oklch(0.95 0.05 27)' };
+  if (days === 0) return { label: 'due today', color: 'oklch(0.5 0.15 60)', bg: 'oklch(0.96 0.06 75)' };
+  if (days <= 2) return { label: `due in ${days}d`, color: 'oklch(0.5 0.15 60)', bg: 'oklch(0.96 0.06 75)' };
+  const label = due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return { label: `due ${label}`, color: 'var(--mut)', bg: 'var(--bg)' };
+}
+
 const priorityLabel = (p: string) => {
   if (p === 'p1') return 'P1';
   if (p === 'p2') return 'P2';
@@ -66,7 +78,7 @@ function TaskCard({
   task: Task;
   onToggle?: () => void;
   onMove?: (col: 'today' | 'upcoming' | 'done') => void;
-  onEdit?: (updates: Partial<Pick<Task, 'title' | 'priority' | 'category'>>) => void;
+  onEdit?: (updates: Partial<Pick<Task, 'title' | 'priority' | 'category' | 'dueDate'>>) => void;
   onDelete?: () => void;
   isHovered: boolean;
   onMouseEnter: () => void;
@@ -79,9 +91,10 @@ function TaskCard({
   const [editTitle, setEditTitle] = useState(task.title);
   const [editPriority, setEditPriority] = useState(task.priority);
   const [editCategory, setEditCategory] = useState(task.category);
+  const [editDueDate, setEditDueDate] = useState(task.dueDate || '');
 
   function saveEdit() {
-    onEdit?.({ title: editTitle.trim() || task.title, priority: editPriority, category: editCategory });
+    onEdit?.({ title: editTitle.trim() || task.title, priority: editPriority, category: editCategory, dueDate: editDueDate || undefined });
     setEditing(false);
   }
 
@@ -108,6 +121,14 @@ function TaskCard({
               {cat}
             </button>
           ))}
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 9 }}>
+          <span style={{ fontSize: 11, color: 'var(--mut)' }}>Due:</span>
+          <input type="date" value={editDueDate} onChange={(e) => setEditDueDate(e.target.value)}
+            style={{ border: '1px solid var(--line)', borderRadius: 3, padding: '3px 6px', fontSize: 12, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--bg)', outline: 'none' }} />
+          {editDueDate && (
+            <button onClick={() => setEditDueDate('')} style={{ padding: '2px 7px', fontSize: 10, border: '1px solid var(--line)', borderRadius: 3, background: 'transparent', color: 'var(--mut)', cursor: 'pointer', fontFamily: 'inherit' }}>clear</button>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 6 }}>
           <button onClick={saveEdit} style={{ padding: '3px 10px', fontSize: 12, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 3, cursor: 'pointer', fontFamily: 'inherit' }}>Save</button>
@@ -152,6 +173,11 @@ function TaskCard({
         <span style={{ fontSize: '11px', color: 'var(--mut)', background: 'var(--bg)', border: '1px solid var(--line2)', borderRadius: '2px', padding: '1px 5px' }}>
           {task.category}
         </span>
+        {(() => { const d = dueBadge(task.dueDate); return d && !isDone ? (
+          <span style={{ fontSize: '10.5px', padding: '2px 6px', borderRadius: '3px', background: d.bg, color: d.color, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace" }}>
+            {d.label}
+          </span>
+        ) : null; })()}
         {task.agentBadge && (
           <span style={{ fontSize: '10.5px', padding: '1px 6px', borderRadius: '10px', background: 'oklch(0.94 0.06 150)', color: 'oklch(0.38 0.1 150)', fontWeight: 500 }}>
             {task.agentBadge}
@@ -207,6 +233,7 @@ export default function Todos({ setScreen: _setScreen }: Props) {
   const [sortByPriority, setSortByPriority] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [newTitle, setNewTitle] = useState('');
+  const [newDueDate, setNewDueDate] = useState('');
   const [newPriority, setNewPriority] = useState<'p1' | 'p2' | 'p3'>('p3');
   const [newCategory, setNewCategory] = useState('Personal');
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -232,10 +259,12 @@ export default function Todos({ setScreen: _setScreen }: Props) {
       priority: newPriority,
       done: false,
       column: 'today',
+      ...(newDueDate ? { dueDate: newDueDate } : {}),
     });
     setNewTitle('');
     setNewPriority('p3');
     setNewCategory('Personal');
+    setNewDueDate('');
     setShowAddForm(false);
   }
 
@@ -437,6 +466,25 @@ export default function Todos({ setScreen: _setScreen }: Props) {
                       {cat}
                     </button>
                   ))}
+                </div>
+                {/* Due date (optional) */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
+                  <span style={{ fontSize: '11px', color: 'var(--mut)' }}>Due (optional):</span>
+                  <input
+                    type="date"
+                    value={newDueDate}
+                    onChange={(e) => setNewDueDate(e.target.value)}
+                    style={{
+                      border: '1px solid var(--line)',
+                      borderRadius: '3px',
+                      padding: '3px 6px',
+                      fontSize: '12px',
+                      fontFamily: 'inherit',
+                      color: 'var(--ink)',
+                      background: 'var(--bg)',
+                      outline: 'none',
+                    }}
+                  />
                 </div>
                 <div style={{ display: 'flex', gap: '6px' }}>
                   <button

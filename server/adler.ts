@@ -42,6 +42,10 @@ EMAIL RULES (important):
 - For anything consequential, prefer create_draft so Jeff can review on the dashboard. Send directly only when Jeff explicitly says to send.
 - If a draft needs deeper work, use workshop_draft to pull it into the Whiteboard.
 
+DUE DATES & SCHEDULING:
+- Tasks can carry due dates. When Jeff mentions a deadline, set dueDate on the task.
+- When a task is due within 2 days (or overdue) and has no matching calendar event, proactively suggest scheduling it: offer 1-2 SPECIFIC time slots from FREE TIME SLOTS (never invent slots). If Jeff picks one, add_calendar_event immediately.
+
 CONTENT LIBRARY (rotate these — connect them to what's relevant in their dashboard):
 - "The Courage to Be Disliked" — Adlerian psychology, directly relevant to your namesake
 - Huberman Lab: "The Science of Setting and Achieving Goals"
@@ -65,9 +69,43 @@ function buildContext(): string {
 
   const recentMemory = s.adlerMemory.slice(-12);
 
+  const todayStr = now.toLocaleDateString('en-CA', { timeZone: TZ }); // YYYY-MM-DD
+  const dueFlag = (d?: string) => {
+    if (!d) return '';
+    const days = Math.round((new Date(`${d}T12:00:00`).getTime() - new Date(`${todayStr}T12:00:00`).getTime()) / 86_400_000);
+    if (days < 0) return ` | due ${d} ⚠️ OVERDUE by ${-days}d`;
+    if (days === 0) return ` | due TODAY ⚠️`;
+    if (days <= 2) return ` | due ${d} (in ${days}d — due soon)`;
+    return ` | due ${d}`;
+  };
   const taskLines = s.tasks.map((t) =>
-    `  [${t.id}] ${t.priority.toUpperCase()} ${t.column}${t.done ? ' ✓' : ''} | ${t.category} | "${t.title}"`
+    `  [${t.id}] ${t.priority.toUpperCase()} ${t.column}${t.done ? ' ✓' : ''} | ${t.category} | "${t.title}"${dueFlag(t.dueDate)}`
   );
+
+  // Free gaps (≥1h, 8am–6pm Denver) across BOTH calendars for today + next 2 days
+  const fmtH = (h: number) => {
+    const hr = Math.floor(h); const m = h % 1 ? ':30' : '';
+    return hr === 12 ? `12${m}pm` : hr > 12 ? `${hr - 12}${m}pm` : `${hr}${m}am`;
+  };
+  const todayNum = parseInt(now.toLocaleDateString('en-US', { day: 'numeric', timeZone: TZ }), 10);
+  const curHour = parseInt(now.toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: TZ }), 10);
+  const gapLines: string[] = [];
+  for (let offset = 0; offset < 3; offset++) {
+    const d = todayNum + offset; // fine within a month; cross-month days simply won't match events
+    const evts = s.calEvents
+      .filter((e) => e.date === d && !e.title.startsWith('📅')) // ignore all-day banners
+      .sort((a, b) => a.start - b.start);
+    let cursor = offset === 0 ? Math.max(8, curHour + 1) : 8;
+    const gaps: string[] = [];
+    for (const e of evts) {
+      if (e.start - cursor >= 1) gaps.push(`${fmtH(cursor)}–${fmtH(e.start)}`);
+      cursor = Math.max(cursor, e.start + e.duration);
+    }
+    if (18 - cursor >= 1) gaps.push(`${fmtH(cursor)}–${fmtH(18)}`);
+    if (cursor <= 18 || gaps.length) {
+      gapLines.push(`  ${offset === 0 ? 'Today' : `The ${d}th`}: ${gaps.join(', ') || 'fully booked (8am–6pm)'}`);
+    }
+  }
 
   const habitLines = s.habits.map((h) =>
     `  [${h.id}] ${h.completedToday ? '✓' : '○'} ${h.name} — ${h.streak}🔥 streak (${h.rate}% rate)`
@@ -114,6 +152,9 @@ ${draftLines.join('\n') || '  none'}
 
 CALENDAR — next 7 days, both work and personal:
 ${calLines.join('\n') || '  nothing scheduled'}
+
+FREE TIME SLOTS (≥1h, 8am–6pm, both calendars considered):
+${gapLines.join('\n') || '  none in the next 3 days'}
 
 HEALTH — Oura Ring, last 3 days (most recent last):
 ${s.health.slice(-3).map((h) => `  ${h.date}: sleep ${h.sleepHours ?? '?'}h (score ${h.sleepScore ?? '?'}, deep ${h.deepHours ?? '?'}h, REM ${h.remHours ?? '?'}h), readiness ${h.readinessScore ?? '?'}, HRV ${h.hrv ?? '?'}, resting HR ${h.restingHR ?? '?'}, steps ${h.steps ?? '?'}`).join('\n') || '  no data synced'}
@@ -353,6 +394,7 @@ GUIDELINES FOR REACHING OUT:
 - Evening (7-9pm): habit reminder if any are incomplete; ask the daily reflection question (once per day)
 - Night (9pm+): only reach out if something is critically overdue
 - Any time: if a streak is about to break (> 20 day streak, habit not logged after 6pm), always reach out
+- Any time: if a task is due within 2 days (or overdue) and nothing on the calendar covers it, reach out ONCE with 1-2 specific free slots from FREE TIME SLOTS to schedule it (e.g. "The consulting contract is due tomorrow — want me to block 10–11am or 2–3pm for it?")
 - Don't reach out if you messaged in the last 90 minutes unless something changed significantly
 
 Respond with JSON only:

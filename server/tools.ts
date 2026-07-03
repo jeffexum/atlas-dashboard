@@ -15,13 +15,13 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   // ── Tasks ──
   {
     name: 'add_task',
-    description: 'Add a new task to the dashboard',
-    input_schema: { type: 'object' as const, properties: { title: { type: 'string' }, priority: { type: 'string', enum: ['p1', 'p2', 'p3'] }, category: { type: 'string', enum: ['Work', 'Personal', 'Health'] }, column: { type: 'string', enum: ['today', 'upcoming'] } }, required: ['title', 'priority', 'category'] },
+    description: 'Add a new task to the dashboard. Set dueDate when Jeff mentions a deadline.',
+    input_schema: { type: 'object' as const, properties: { title: { type: 'string' }, priority: { type: 'string', enum: ['p1', 'p2', 'p3'] }, category: { type: 'string', enum: ['Work', 'Personal', 'Health'] }, column: { type: 'string', enum: ['today', 'upcoming'] }, dueDate: { type: 'string', description: 'Optional due date, YYYY-MM-DD' } }, required: ['title', 'priority', 'category'] },
   },
   {
     name: 'edit_task',
-    description: 'Edit an existing task title, priority, or category',
-    input_schema: { type: 'object' as const, properties: { id: { type: 'string' }, title: { type: 'string' }, priority: { type: 'string', enum: ['p1', 'p2', 'p3'] }, category: { type: 'string', enum: ['Work', 'Personal', 'Health'] } }, required: ['id'] },
+    description: 'Edit an existing task title, priority, category, or due date',
+    input_schema: { type: 'object' as const, properties: { id: { type: 'string' }, title: { type: 'string' }, priority: { type: 'string', enum: ['p1', 'p2', 'p3'] }, category: { type: 'string', enum: ['Work', 'Personal', 'Health'] }, dueDate: { type: 'string', description: 'YYYY-MM-DD' } }, required: ['id'] },
   },
   {
     name: 'delete_task',
@@ -158,13 +158,14 @@ export async function executeTool(name: string, input: Record<string, unknown>):
   try {
     switch (name) {
       case 'add_task':
-        state.addTask({ title: input.title as string, priority: input.priority as 'p1' | 'p2' | 'p3', category: input.category as string, done: false, column: (input.column as 'today' | 'upcoming') || 'today', agentBadge: 'Adler' });
+        state.addTask({ title: input.title as string, priority: input.priority as 'p1' | 'p2' | 'p3', category: input.category as string, done: false, column: (input.column as 'today' | 'upcoming') || 'today', agentBadge: 'Adler', ...(input.dueDate ? { dueDate: input.dueDate as string } : {}) });
         return 'Task added.';
       case 'edit_task':
         state.editTask(input.id as string, {
           ...(input.title ? { title: input.title as string } : {}),
           ...(input.priority ? { priority: input.priority as 'p1' | 'p2' | 'p3' } : {}),
           ...(input.category ? { category: input.category as string } : {}),
+          ...(input.dueDate ? { dueDate: input.dueDate as string } : {}),
         });
         return 'Task updated.';
       case 'delete_task':

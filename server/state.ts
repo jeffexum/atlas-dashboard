@@ -8,6 +8,8 @@ export interface Task {
   done: boolean;
   agentBadge?: string;
   column: 'today' | 'upcoming' | 'done';
+  // Optional due date, Denver-local YYYY-MM-DD
+  dueDate?: string;
 }
 
 export interface Comm {
@@ -441,7 +443,7 @@ export function toggleTask(id: string): void {
   });
 }
 
-export function editTask(id: string, updates: Partial<Pick<Task, 'title' | 'priority' | 'category'>>): void {
+export function editTask(id: string, updates: Partial<Pick<Task, 'title' | 'priority' | 'category' | 'dueDate'>>): void {
   setState({
     tasks: _state.tasks.map((t) => t.id === id ? { ...t, ...updates } : t),
   });

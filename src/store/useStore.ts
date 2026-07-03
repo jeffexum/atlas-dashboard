@@ -8,6 +8,7 @@ export interface Task {
   done: boolean;
   agentBadge?: string;
   column: 'today' | 'upcoming' | 'done';
+  dueDate?: string; // YYYY-MM-DD
 }
 
 export interface Comm {
@@ -158,7 +159,7 @@ interface StoreState {
   toggleTask: (id: string) => void;
   addTask: (task: Task) => void;
   moveTask: (id: string, column: 'today' | 'upcoming' | 'done') => void;
-  editTask: (id: string, updates: Partial<Pick<Task, 'title' | 'priority' | 'category'>>) => void;
+  editTask: (id: string, updates: Partial<Pick<Task, 'title' | 'priority' | 'category' | 'dueDate'>>) => void;
   deleteTask: (id: string) => void;
 
   toggleHabitToday: (id: string) => void;

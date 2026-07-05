@@ -390,8 +390,18 @@ interface Props {
   setScreen?: (s: Screen) => void;
 }
 
+type MailSource = 'all' | 'work' | 'personal';
+
 export default function Inbox({ setScreen: _setScreen }: Props) {
-  const comms = useStore((s) => s.comms).filter((c) => c.status !== 'dismissed');
+  const [source, setSource] = useState<MailSource>('all');
+  const allComms = useStore((s) => s.comms).filter((c) => c.status !== 'dismissed');
+  // Gmail comms are prefixed "gm-"; everything else is Outlook (work).
+  const isPersonal = (id: string) => id.startsWith('gm-');
+  const workCount = allComms.filter((c) => !isPersonal(c.id)).length;
+  const personalCount = allComms.filter((c) => isPersonal(c.id)).length;
+  const comms = source === 'all' ? allComms
+    : source === 'personal' ? allComms.filter((c) => isPersonal(c.id))
+    : allComms.filter((c) => !isPersonal(c.id));
   const dismissComm = useStore((s) => s.dismissComm);
   const drafts = useStore((s) => s.drafts);
   const proposedActions = useStore((s) => s.proposedActions);
@@ -537,9 +547,41 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
           </div>
         </div>
 
-        {/* Scout callout */}
+        {/* Source toggle: All / Work (Outlook) / Personal (Gmail) */}
+        <div style={{ display: 'inline-flex', gap: 2, padding: 2, marginBottom: 14, background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 8 }}>
+          {([
+            ['all', 'All', allComms.length],
+            ['work', 'Work', workCount],
+            ['personal', 'Personal', personalCount],
+          ] as [MailSource, string, number][]).map(([key, label, count]) => (
+            <button
+              key={key}
+              onClick={() => setSource(key)}
+              style={{
+                padding: '5px 14px',
+                fontSize: 12.5,
+                fontWeight: source === key ? 600 : 400,
+                border: 'none',
+                borderRadius: 6,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                background: source === key ? 'var(--card)' : 'transparent',
+                color: source === key ? 'var(--ink)' : 'var(--mut)',
+                boxShadow: source === key ? 'var(--shadow-card)' : 'none',
+              }}
+            >
+              {label} <span style={{ fontSize: 10.5, fontFamily: "'JetBrains Mono', monospace", color: 'var(--faint)' }}>{count}</span>
+            </button>
+          ))}
+        </div>
+
         {/* Messages */}
         <div>
+          {comms.length === 0 && (
+            <div style={{ ...cardBase, fontSize: 12.5, color: 'var(--mut)', fontStyle: 'italic' }}>
+              No {source === 'all' ? '' : source === 'work' ? 'work ' : 'personal '}messages in view.
+            </div>
+          )}
           {comms.map((comm) => (
             <div
               key={comm.id}

@@ -9,8 +9,8 @@ import { getState, setState, persistNow, addHabit, deleteHabit, toggleHabitToday
 import type { Comm } from './state.js';
 import { runAgent } from './agents.js';
 import { adlerProactiveCheck, generateBriefing, runPartnerAdler } from './adler.js';
-import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, replyToEmail, fetchEmailBody } from './outlook.js';
-import { getGoogleAuthUrl, exchangeGoogleCode, syncGoogleCalendar, isGoogleAuthenticated, loadGoogleToken } from './google.js';
+import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, replyToEmail, fetchEmailBody, hasCalendarWrite } from './outlook.js';
+import { getGoogleAuthUrl, exchangeGoogleCode, syncGoogleCalendar, isGoogleAuthenticated, loadGoogleToken, hasCalendarWriteScope } from './google.js';
 import { syncOura, isOuraConfigured } from './oura.js';
 import { isGmailConnected, syncGmail, replyGmail, fetchGmailBody } from './gmail.js';
 import { suggestSlots, guessTimezone } from './schedule.js';
@@ -622,6 +622,11 @@ app.get('/api/setup/status', async (_req: Request, res: Response) => {
     styleProfile: !!s.userProfile,
     knowledgeDocs: s.knowledge.length,
     goodreads: isGoodreadsConfigured(),
+    // Calendar-write requires re-consent to Calendars.ReadWrite (Outlook) / calendar.events (Google).
+    calendarWrite: {
+      work: hasCalendarWrite(),
+      personal: hasCalendarWriteScope(),
+    },
     // Surface dead connections so the UI can prompt a reconnect instead of going silently stale.
     needsReauth: {
       outlook: health.outlook.needsReauth,

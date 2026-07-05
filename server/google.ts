@@ -66,6 +66,7 @@ export function getGoogleAuthUrl(): string {
     redirect_uri: GOOGLE_REDIRECT_URI,
     response_type: 'code',
     scope: [
+      'https://www.googleapis.com/auth/calendar.events',
       'https://www.googleapis.com/auth/calendar.readonly',
       'https://www.googleapis.com/auth/gmail.readonly',
       'https://www.googleapis.com/auth/gmail.send',
@@ -160,6 +161,31 @@ async function getAccessToken(): Promise<string> {
   await saveToken(_token);
   markOk('google');
   return _token.access_token;
+}
+
+export function hasCalendarWriteScope(): boolean {
+  return !!_token?.scope?.includes('calendar.events');
+}
+
+// Create a real event on the user's primary Google calendar. Wall-clock local
+// time + IANA timezone. Returns the created event id.
+export async function createGoogleEvent(opts: {
+  summary: string; startLocal: string; endLocal: string; tz: string; description?: string;
+}): Promise<string> {
+  const token = await getAccessToken();
+  const res = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      summary: opts.summary,
+      description: opts.description,
+      start: { dateTime: opts.startLocal, timeZone: opts.tz },
+      end: { dateTime: opts.endLocal, timeZone: opts.tz },
+    }),
+  });
+  if (!res.ok) throw new Error(`Google create event ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  const created = await res.json() as { id?: string };
+  return created?.id || '';
 }
 
 // ── Calendar sync ─────────────────────────────────────────────────────────────

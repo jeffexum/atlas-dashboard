@@ -20,12 +20,18 @@ const TENANT_ID = process.env.MICROSOFT_TENANT_ID || '';
 const API_BASE = process.env.WEBHOOK_URL || process.env.PUBLIC_API_URL || '';
 const REDIRECT_URI = process.env.MICROSOFT_REDIRECT_URI || (API_BASE ? `${API_BASE}/api/outlook/callback` : '');
 
-const SCOPES = ['offline_access', 'User.Read', 'Mail.Read', 'Mail.Send', 'Calendars.Read'];
+const SCOPES = ['offline_access', 'User.Read', 'Mail.Read', 'Mail.Send', 'Calendars.ReadWrite'];
 
 interface TokenData {
   access_token: string;
   refresh_token: string;
   expires_at: number; // ms timestamp
+  scope?: string; // space-separated granted scopes (from the token response)
+}
+
+// True only once the user has re-consented to Calendars.ReadWrite.
+export function hasCalendarWrite(): boolean {
+  return !!tokenData?.scope?.includes('Calendars.ReadWrite');
 }
 
 // Token store — persisted to Redis so auth survives restarts
@@ -145,13 +151,14 @@ export async function exchangeCode(code: string): Promise<void> {
     body: body.toString(),
   });
 
-  const data = await res.json() as { access_token?: string; refresh_token?: string; expires_in?: number; error?: string; error_description?: string };
+  const data = await res.json() as { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string; error?: string; error_description?: string };
   if (!data.access_token) throw new Error(data.error_description || 'Token exchange failed');
 
   tokenData = {
     access_token: data.access_token,
     refresh_token: data.refresh_token || '',
     expires_at: Date.now() + (data.expires_in || 3600) * 1000,
+    scope: data.scope || SCOPES.join(' '),
   };
   await saveToken(tokenData);
 }
@@ -183,7 +190,7 @@ async function _doRefresh(): Promise<void> {
     body: body.toString(),
   });
 
-  const data = await res.json() as { access_token?: string; refresh_token?: string; expires_in?: number; error?: string };
+  const data = await res.json() as { access_token?: string; refresh_token?: string; expires_in?: number; scope?: string; error?: string };
   if (!data.access_token) {
     if (isInvalidGrant(data.error)) {
       markReauth('outlook', data.error || 'invalid_grant');
@@ -198,6 +205,7 @@ async function _doRefresh(): Promise<void> {
     access_token: data.access_token,
     refresh_token: data.refresh_token || tokenData.refresh_token,
     expires_at: Date.now() + (data.expires_in || 3600) * 1000,
+    scope: data.scope || tokenData.scope,
   };
   await saveToken(tokenData);
   markOk('outlook');
@@ -232,6 +240,20 @@ export async function graphRequest(method: string, path: string, body?: unknown)
   if (!res.ok) throw new Error(`Graph ${method} ${path} returned ${res.status}: ${(await res.text()).slice(0, 300)}`);
   if (res.status === 204) return null;
   return res.json();
+}
+
+// Create a real event on the user's Outlook calendar. Wall-clock local time +
+// IANA timezone so no offset math is needed. Returns the created event id.
+export async function createOutlookEvent(opts: {
+  subject: string; startLocal: string; endLocal: string; tz: string; body?: string;
+}): Promise<string> {
+  const created = await graphRequest('POST', '/me/events', {
+    subject: opts.subject,
+    body: opts.body ? { contentType: 'text', content: opts.body } : undefined,
+    start: { dateTime: opts.startLocal, timeZone: opts.tz },
+    end: { dateTime: opts.endLocal, timeZone: opts.tz },
+  }) as { id?: string };
+  return created?.id || '';
 }
 
 export async function graphGet(path: string, extraHeaders?: Record<string, string>): Promise<unknown> {

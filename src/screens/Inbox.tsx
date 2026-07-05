@@ -38,14 +38,187 @@ const smallBtn: React.CSSProperties = {
 };
 
 
+// ── Scheduler side pane ───────────────────────────────────────────────────────
+// Merged-calendar availability with clickable slots and a Sundial-style
+// timezone strip. Read-only: clicking inserts an offer line into the draft.
+
+interface ScheduleSlot { startHour: number; epoch: number; label: string; date: string; label2: string }
+interface ScheduleDay { date: string; label: string; busy: { start: number; end: number; title: string }[]; slots: { startHour: number; epoch: number; label: string }[] }
+interface ScheduleData { tz: string; days: ScheduleDay[]; suggested: ScheduleSlot[] }
+
+const TZ_OPTIONS = [
+  ['America/Denver', 'Denver'], ['America/Los_Angeles', 'Pacific'], ['America/Chicago', 'Central'],
+  ['America/New_York', 'Eastern'], ['Europe/London', 'London'], ['Europe/Berlin', 'Berlin'],
+  ['Asia/Tokyo', 'Tokyo'], ['Australia/Sydney', 'Sydney'],
+] as const;
+
+function tzAbbrev(tz: string, epoch: number): string {
+  try {
+    return new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'short' })
+      .formatToParts(new Date(epoch)).find((p) => p.type === 'timeZoneName')?.value || tz;
+  } catch { return tz; }
+}
+
+function fmtInTz(epoch: number, tz: string): string {
+  return new Date(epoch).toLocaleTimeString('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' });
+}
+
+function SchedulerPane({ commId, myTz, onInsert }: { commId: string; myTz?: string; onInsert: (line: string) => void }) {
+  const [data, setData] = useState<ScheduleData | null>(null);
+  const [duration, setDuration] = useState(30);
+  const [theirTz, setTheirTz] = useState<string>('');
+  const [tzGuessed, setTzGuessed] = useState(false);
+
+  React.useEffect(() => {
+    fetch(`${API_URL}/api/schedule/suggest?duration=${duration}`)
+      .then((r) => r.json())
+      .then(setData)
+      .catch(() => {});
+  }, [duration]);
+
+  React.useEffect(() => {
+    fetch(`${API_URL}/api/schedule/tz-guess`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ commId }),
+    })
+      .then((r) => r.json())
+      .then((j: { tz?: string | null }) => { if (j.tz) { setTheirTz(j.tz); setTzGuessed(true); } })
+      .catch(() => {});
+  }, [commId]);
+
+  if (!data) {
+    return (
+      <div style={{ width: 250, flexShrink: 0, borderLeft: '1px solid var(--line2)', padding: 14, fontSize: 12, color: 'var(--mut)' }}>
+        Loading calendar…
+      </div>
+    );
+  }
+
+  const tz = data.tz || myTz || 'America/Denver';
+  const showTheirs = theirTz && theirTz !== tz;
+  const nowEpoch = Date.now();
+
+  function insertSlot(s: ScheduleSlot) {
+    const endEpoch = s.epoch + duration * 60_000;
+    let line = `${s.label2.split(',')[0]}, ${new Date(s.epoch).toLocaleDateString('en-US', { timeZone: tz, month: 'short', day: 'numeric' })} — ${fmtInTz(s.epoch, tz)}–${fmtInTz(endEpoch, tz)} ${tzAbbrev(tz, s.epoch)}`;
+    if (showTheirs) line += ` (${fmtInTz(s.epoch, theirTz)} ${tzAbbrev(theirTz, s.epoch)} your time)`;
+    onInsert(line);
+  }
+
+  // Sundial strip: hours 8–18 in my zone, mapped into theirs
+  const stripHours: number[] = [];
+  for (let h = 8; h <= 18; h += 2) stripHours.push(h);
+  const todayBase = data.days[0] ? data.days[0].slots[0]?.epoch ?? nowEpoch : nowEpoch;
+  // Anchor: epoch of 8am my-zone today ≈ first slot epoch minus its hour offset
+  const firstSlot = data.days[0]?.slots[0];
+  const anchor8am = firstSlot ? firstSlot.epoch - (firstSlot.startHour - 8) * 3600_000 : todayBase;
+
+  return (
+    <div style={{ width: 250, flexShrink: 0, borderLeft: '1px solid var(--line2)', padding: '10px 12px', background: 'var(--bg)', maxHeight: 480, overflowY: 'auto' }}>
+      <div style={{ ...eyebrow, marginBottom: 8 }}>📅 Find a time</div>
+
+      {/* Duration + their-TZ controls */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+        <select value={duration} onChange={(e) => setDuration(Number(e.target.value))}
+          style={{ fontSize: 11, padding: '3px 4px', border: '1px solid var(--line)', borderRadius: 3, background: 'var(--card)', color: 'var(--ink2)', fontFamily: 'inherit' }}>
+          <option value={15}>15 min</option><option value={30}>30 min</option>
+          <option value={45}>45 min</option><option value={60}>1 hour</option>
+        </select>
+        <select value={theirTz} onChange={(e) => { setTheirTz(e.target.value); setTzGuessed(false); }}
+          style={{ fontSize: 11, padding: '3px 4px', border: '1px solid var(--line)', borderRadius: 3, background: 'var(--card)', color: theirTz ? 'var(--ink2)' : 'var(--faint)', fontFamily: 'inherit', flex: 1, minWidth: 0 }}>
+          <option value="">their timezone…</option>
+          {TZ_OPTIONS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          {theirTz && !TZ_OPTIONS.some(([v]) => v === theirTz) && <option value={theirTz}>{theirTz.split('/')[1]?.replace('_', ' ')}</option>}
+        </select>
+      </div>
+      {tzGuessed && showTheirs && (
+        <div style={{ fontSize: 10, color: 'var(--faint)', marginTop: -6, marginBottom: 8 }}>
+          guessed from their email — override above
+        </div>
+      )}
+
+      {/* Sundial timezone strip */}
+      {showTheirs && (
+        <div style={{ marginBottom: 12, border: '1px solid var(--line2)', borderRadius: 4, overflow: 'hidden' }}>
+          {[tz, theirTz].map((zone, row) => (
+            <div key={zone} style={{ display: 'flex', borderTop: row ? '1px solid var(--line2)' : 'none' }}>
+              <div style={{ width: 34, fontSize: 8.5, fontFamily: "'JetBrains Mono', monospace", color: 'var(--faint)', padding: '3px 3px', flexShrink: 0 }}>
+                {tzAbbrev(zone, nowEpoch)}
+              </div>
+              {stripHours.map((h) => {
+                const ep = anchor8am + (h - 8) * 3600_000;
+                const theirHour = parseInt(new Date(ep).toLocaleTimeString('en-US', { timeZone: zone, hour: 'numeric', hour12: false }), 10);
+                const business = theirHour >= 9 && theirHour < 17;
+                return (
+                  <div key={h} style={{ flex: 1, textAlign: 'center', fontSize: 8.5, fontFamily: "'JetBrains Mono', monospace", padding: '3px 0', background: business ? 'var(--accentbg)' : 'transparent', color: business ? 'var(--accent)' : 'var(--faint)' }}>
+                    {new Date(ep).toLocaleTimeString('en-US', { timeZone: zone, hour: 'numeric' }).replace(' ', '').toLowerCase()}
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Top suggestions */}
+      <div style={{ fontSize: 10.5, fontWeight: 600, color: 'var(--mut)', marginBottom: 5, textTransform: 'uppercase', letterSpacing: '.06em' }}>Suggested</div>
+      {data.suggested.map((s) => (
+        <button key={s.epoch} onClick={() => insertSlot(s)}
+          style={{ display: 'block', width: '100%', textAlign: 'left', marginBottom: 5, padding: '6px 9px', fontSize: 11.5, border: '1px solid var(--accent)', borderRadius: 4, background: 'var(--accentbg)', color: 'var(--ink)', cursor: 'pointer', fontFamily: 'inherit' }}>
+          {s.label2}
+          {showTheirs && <span style={{ color: 'var(--mut)', fontSize: 10 }}> · {fmtInTz(s.epoch, theirTz)} theirs</span>}
+        </button>
+      ))}
+      {data.suggested.length === 0 && <div style={{ fontSize: 11.5, color: 'var(--mut)', marginBottom: 8 }}>No open slots in the next week.</div>}
+
+      {/* Per-day slot chips */}
+      {data.days.map((day) => (
+        <div key={day.date} style={{ marginTop: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--ink2)', marginBottom: 4 }}>
+            {day.label}
+            <span style={{ color: 'var(--faint)', fontWeight: 400 }}> · {day.busy.length ? `${day.busy.length} booked` : 'clear'}</span>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {day.slots.slice(0, 8).map((s) => (
+              <button key={s.epoch}
+                onClick={() => insertSlot({ ...s, date: day.date, label2: `${day.label.split(' ')[0]}, ${s.label}` })}
+                style={{ padding: '2px 7px', fontSize: 10.5, fontFamily: "'JetBrains Mono', monospace", border: '1px solid var(--line)', borderRadius: 3, background: 'var(--card)', color: 'var(--ink2)', cursor: 'pointer' }}>
+                {s.label.replace(':00', '').replace(' ', '').toLowerCase()}
+              </button>
+            ))}
+            {day.slots.length === 0 && <span style={{ fontSize: 10.5, color: 'var(--faint)' }}>fully booked</span>}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // Inline reply composer — lives inside the expanded email, with Adler refinement
-function DraftComposer({ draft, who }: { draft: Draft; who: string }) {
+function DraftComposer({ draft, who, commId }: { draft: Draft; who: string; commId: string }) {
   const sendDraft = useStore((s) => s.sendDraft);
   const discardDraft = useStore((s) => s.discardDraft);
   const saveDraftText = useStore((s) => s.saveDraftText);
   const updateDraftText = useStore((s) => s.updateDraftText);
   const [refineInput, setRefineInput] = useState('');
   const [refining, setRefining] = useState(false);
+  const [showScheduler, setShowScheduler] = useState(false);
+
+  // Insert an offered time before the signoff (or append), as a bulleted offer list.
+  function insertTimeLine(line: string) {
+    const text = draft.text;
+    const bullet = `• ${line}`;
+    const m = text.match(/\n(Best|Thanks|Cheers|Regards|Sincerely|Talk soon|—)[\s\S]*$/);
+    const before = (m && m.index !== undefined ? text.slice(0, m.index) : text).trimEnd();
+    const after = m && m.index !== undefined ? text.slice(m.index) : '\n';
+    const block = /Would any of these work\?/.test(before)
+      ? `\n${bullet}` // extend the existing offer list
+      : `\n\nWould any of these work?\n${bullet}`;
+    const next = `${before}${block}${after}`;
+    updateDraftText(draft.id, next);
+    saveDraftText(draft.id, next);
+  }
 
   async function handleRefine() {
     if (!refineInput.trim() || refining) return;
@@ -80,30 +253,50 @@ function DraftComposer({ draft, who }: { draft: Draft; who: string }) {
         <span style={{ fontSize: 10.5, color: 'var(--mut)', fontFamily: "'JetBrains Mono', monospace" }}>
           sends in-thread
         </span>
+        <button
+          onClick={() => setShowScheduler((v) => !v)}
+          style={{
+            marginLeft: 'auto',
+            padding: '3px 10px',
+            fontSize: 11.5,
+            border: `1px solid ${showScheduler ? 'var(--accent)' : 'var(--line)'}`,
+            borderRadius: 12,
+            background: showScheduler ? 'var(--accentbg)' : 'var(--card)',
+            color: showScheduler ? 'var(--accent)' : 'var(--ink2)',
+            cursor: 'pointer',
+            fontFamily: 'inherit',
+          }}
+        >
+          📅 Suggest times
+        </button>
       </div>
 
-      {/* Editor */}
-      <textarea
-        value={draft.text}
-        onChange={(e) => updateDraftText(draft.id, e.target.value)}
-        onBlur={(e) => saveDraftText(draft.id, e.target.value)}
-        spellCheck
-        style={{
-          width: '100%',
-          minHeight: 190,
-          padding: '14px 16px',
-          border: 'none',
-          outline: 'none',
-          resize: 'vertical',
-          fontSize: 13.5,
-          lineHeight: 1.75,
-          fontFamily: "'Schibsted Grotesk', sans-serif",
-          color: 'var(--ink)',
-          background: 'var(--card)',
-          boxSizing: 'border-box',
-          whiteSpace: 'pre-wrap',
-        }}
-      />
+      {/* Editor + optional scheduler pane */}
+      <div style={{ display: 'flex', alignItems: 'stretch' }}>
+        <textarea
+          value={draft.text}
+          onChange={(e) => updateDraftText(draft.id, e.target.value)}
+          onBlur={(e) => saveDraftText(draft.id, e.target.value)}
+          spellCheck
+          style={{
+            flex: 1,
+            minWidth: 0,
+            minHeight: 190,
+            padding: '14px 16px',
+            border: 'none',
+            outline: 'none',
+            resize: 'vertical',
+            fontSize: 13.5,
+            lineHeight: 1.75,
+            fontFamily: "'Schibsted Grotesk', sans-serif",
+            color: 'var(--ink)',
+            background: 'var(--card)',
+            boxSizing: 'border-box',
+            whiteSpace: 'pre-wrap',
+          }}
+        />
+        {showScheduler && <SchedulerPane commId={commId} onInsert={insertTimeLine} />}
+      </div>
 
       {/* Adler refine bar */}
       <div style={{ display: 'flex', gap: 6, padding: '8px 12px', borderTop: '1px solid var(--line2)', alignItems: 'center' }}>
@@ -434,7 +627,7 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
                   const inlineDraft = drafts.find((d) => d.commId === comm.id && d.status === 'ready');
                   return inlineDraft ? (
                     <div onClick={(e) => e.stopPropagation()}>
-                      <DraftComposer draft={inlineDraft} who={comm.who} />
+                      <DraftComposer draft={inlineDraft} who={comm.who} commId={comm.id} />
                     </div>
                   ) : null;
                 })()}

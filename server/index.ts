@@ -12,6 +12,7 @@ import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, load
 import { getGoogleAuthUrl, exchangeGoogleCode, syncGoogleCalendar, isGoogleAuthenticated, loadGoogleToken } from './google.js';
 import { syncOura, isOuraConfigured } from './oura.js';
 import { isGmailConnected, syncGmail, replyGmail, fetchGmailBody } from './gmail.js';
+import { suggestSlots, guessTimezone } from './schedule.js';
 import { syncGoodreads, isGoodreadsConfigured } from './goodreads.js';
 import { ensureGraphSubscription, onMailNotification, GRAPH_CLIENT_STATE } from './webhooks.js';
 import { addDelegation, setDelegationStatus, deleteDelegation, extractDelegations, sweepDelegationStatuses } from './delegations.js';
@@ -434,6 +435,20 @@ app.post('/api/shopping/clear-bought', async (_req: Request, res: Response) => {
   clearBoughtShoppingItems();
   await persistNow();
   res.json({ ok: true });
+});
+
+// ── Scheduling (draft-composer side pane: slot suggestions + recipient TZ) ────
+
+app.get('/api/schedule/suggest', (req: Request, res: Response) => {
+  const duration = Math.min(240, Math.max(15, parseInt(String(req.query.duration || '30'), 10) || 30));
+  const days = Math.min(10, Math.max(1, parseInt(String(req.query.days || '5'), 10) || 5));
+  res.json(suggestSlots(duration, days));
+});
+
+app.post('/api/schedule/tz-guess', async (req: Request, res: Response) => {
+  const { commId } = req.body as { commId?: string };
+  if (!commId) { res.status(400).json({ error: 'commId required' }); return; }
+  res.json({ tz: await guessTimezone(commId) });
 });
 
 // ── Knowledge documents (uploaded markdowns → distilled into assistant memory) ─

@@ -7,8 +7,7 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { getState, setState, persistNow, addHabit, deleteHabit, toggleHabitToday, recomputeAllHabits, dismissComm, snoozeComm, addShoppingItem, toggleShoppingItem, deleteShoppingItem, clearBoughtShoppingItems } from './state.js';
 import type { Comm } from './state.js';
-import { runAgent } from './agents.js';
-import { adlerProactiveCheck, generateBriefing, runPartnerAdler } from './adler.js';
+import { adlerProactiveCheck, generateBriefing, runPartnerAdler, runAdler } from './adler.js';
 import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, replyToEmail, fetchEmailBody, hasCalendarWrite } from './outlook.js';
 import { getGoogleAuthUrl, exchangeGoogleCode, syncGoogleCalendar, isGoogleAuthenticated, loadGoogleToken, hasCalendarWriteScope } from './google.js';
 import { syncOura, isOuraConfigured } from './oura.js';
@@ -208,14 +207,20 @@ app.delete('/api/habits/:id', async (req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// AskBar / Assistant chat — same Adler brain and shared tool layer as
+// Telegram and the Whiteboard (agents.ts personas retired).
 app.post('/api/ask', async (req: Request, res: Response) => {
-  const { message, agentHint } = req.body;
+  const { message } = req.body as { message?: string };
   if (!message) {
     res.status(400).json({ error: 'message is required' });
     return;
   }
-  const result = await runAgent({ message, agentHint, state: getState() });
-  res.json(result);
+  try {
+    const text = await runAdler(message);
+    res.json({ text, actions: [], agent: USER.assistant.toLowerCase() });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
 });
 
 app.get('/api/events', (req: Request, res: Response) => {

@@ -20,10 +20,7 @@ interface Message {
 }
 
 const AGENT_COLORS: Record<string, string> = {
-  planner: 'var(--blue)',
-  coach: 'var(--accent)',
-  keeper: 'oklch(0.76 0.15 75)',
-  scout: 'conic-gradient(from 180deg, var(--accent), var(--blue), var(--violet), var(--accent))',
+  adler: 'conic-gradient(from 180deg, var(--accent), var(--blue), var(--violet), var(--accent))',
 };
 
 interface Props {
@@ -82,7 +79,7 @@ export default function Assistant({ setScreen }: Props) {
         role: 'agent',
         text: "I couldn't reach the server just now — please try again in a moment.",
         agentName: assistantName,
-        agentKey: 'scout',
+        agentKey: 'adler',
       };
       setMessages((prev) => [...prev, agentMsg]);
     } finally {
@@ -131,7 +128,7 @@ export default function Assistant({ setScreen }: Props) {
                 <div
                   style={{
                     width: 10, height: 10, borderRadius: '50%',
-                    background: AGENT_COLORS[msg.agentKey || 'scout'] || AGENT_COLORS.scout,
+                    background: AGENT_COLORS[msg.agentKey || 'adler'] || AGENT_COLORS.adler,
                     flexShrink: 0,
                   }}
                 />

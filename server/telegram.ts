@@ -2,7 +2,6 @@
 
 import TelegramBot from 'node-telegram-bot-api';
 import { USER } from './config.js';
-import { runAgent } from './agents.js';
 import { runAdler, runPartnerAdler } from './adler.js';
 import { getState } from './state.js';
 

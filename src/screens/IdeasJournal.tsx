@@ -11,12 +11,6 @@ const card: React.CSSProperties = {
 
 type Tab = 'Ideas' | 'Journal' | 'Voice Notes';
 
-const VOICE_NOTES = [
-  { title: 'Product brainstorm', duration: '2:14', date: 'Jun 27' },
-  { title: 'Book reflection – The Creative Act', duration: '4:38', date: 'Jun 24' },
-  { title: 'Weekly review notes', duration: '6:52', date: 'Jun 22' },
-];
-
 const AVAILABLE_TAGS = ['dev', 'product', 'ux', 'personal'];
 
 interface Props {
@@ -26,6 +20,8 @@ interface Props {
 function IdeasTab() {
   const ideas = useStore((s) => s.ideas);
   const addIdea = useStore((s) => s.addIdea);
+  const journalEntries = useStore((s) => s.journalEntries);
+  const latestEntry = journalEntries[0];
 
   const [showForm, setShowForm] = useState(false);
   const [newTitle, setNewTitle] = useState('');
@@ -210,51 +206,35 @@ function IdeasTab() {
         </div>
       </div>
 
-      {/* Journal entry sidebar */}
+      {/* Latest journal entry sidebar */}
       <div style={{ ...card, padding: 18 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-          <span style={{ fontFamily: "'Newsreader', serif", fontSize: 16, color: 'var(--ink)' }}>
-            Monday, June 29
-          </span>
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: 'var(--faint)' }}>
-            2026
-          </span>
-        </div>
-        <div style={{ height: 1, background: 'var(--line2)', marginTop: 8, marginBottom: 0 }} />
-        <div
-          style={{
-            fontFamily: "'Newsreader', serif",
-            fontStyle: 'italic',
-            fontSize: 15,
-            lineHeight: 1.75,
-            color: 'var(--ink2)',
-            marginTop: 12,
-          }}
-        >
-          <p style={{ margin: '0 0 12px 0' }}>
-            Today felt productive despite the morning chaos. The Q2 review prep is hanging over me,
-            but the focus block my assistant added actually helped — got 60% of the slides done before
-            lunch. Had a good conversation with Sarah about the server issues; feels resolved now.
-          </p>
-          <p style={{ margin: 0 }}>
-            Need to think more carefully about how I'm prioritizing. Three P1 tasks sitting in my
-            inbox is a sign I've been avoiding hard conversations...
-          </p>
-        </div>
-        <div
-          style={{
-            marginTop: 16,
-            background: 'var(--accentbg)',
-            borderLeft: '3px solid var(--accent)',
-            borderRadius: 'var(--radius-card)',
-            padding: '10px 12px',
-            fontSize: 12,
-            color: 'var(--ink2)',
-          }}
-        >
-          Adler: Based on today's patterns, consider blocking 8–9am tomorrow for email triage
-          before your calendar fills up.
-        </div>
+        {latestEntry ? (
+          <>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+              <span style={{ fontFamily: "'Newsreader', serif", fontSize: 16, color: 'var(--ink)' }}>
+                {latestEntry.date}
+              </span>
+            </div>
+            <div style={{ height: 1, background: 'var(--line2)', marginTop: 8, marginBottom: 0 }} />
+            <div
+              style={{
+                fontFamily: "'Newsreader', serif",
+                fontStyle: 'italic',
+                fontSize: 15,
+                lineHeight: 1.75,
+                color: 'var(--ink2)',
+                marginTop: 12,
+                whiteSpace: 'pre-wrap',
+              }}
+            >
+              {latestEntry.text}
+            </div>
+          </>
+        ) : (
+          <div style={{ fontSize: 12.5, color: 'var(--mut)', fontStyle: 'italic' }}>
+            Your latest journal entry will appear here. Write one in the Journal tab.
+          </div>
+        )}
       </div>
     </div>
   );
@@ -343,95 +323,19 @@ function JournalTab() {
         </div>
       ))}
 
-      {/* Existing static entry */}
-      <div style={{ ...card, padding: 24, maxWidth: 680, marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
-          <span style={{ fontFamily: "'Newsreader', serif", fontSize: 18, color: 'var(--ink)' }}>
-            Sunday, June 28
-          </span>
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12, color: 'var(--faint)' }}>
-            2026
-          </span>
+      {journalEntries.length === 0 && (
+        <div style={{ ...card, padding: 24, maxWidth: 680, fontSize: 12.5, color: 'var(--mut)', fontStyle: 'italic' }}>
+          No journal entries yet — write your first one above.
         </div>
-        <div style={{ height: 1, background: 'var(--line2)', marginTop: 10, marginBottom: 0 }} />
-        <div
-          style={{
-            fontFamily: "'Newsreader', serif",
-            fontStyle: 'italic',
-            fontSize: 15,
-            lineHeight: 1.8,
-            color: 'var(--ink2)',
-            marginTop: 14,
-          }}
-        >
-          <p style={{ margin: '0 0 14px 0' }}>
-            Slow Sunday. Spent the morning reading — finished two more chapters of The Creative Act.
-            The section on "following the work" resonated more than expected. I've been forcing too
-            many things lately rather than letting them develop naturally.
-          </p>
-          <p style={{ margin: '0 0 14px 0' }}>
-            Did the weekly review in the afternoon. Goals are mostly on track except running — I'm
-            behind pace after the knee thing last month. Adjusted the weekly target down to 18 miles
-            to be realistic without giving up entirely.
-          </p>
-          <p style={{ margin: 0 }}>
-            Good dinner with the family. Sometimes the best thing is stepping away from the screen
-            entirely. Starting the week with that energy feels right.
-          </p>
-        </div>
-        <div
-          style={{
-            marginTop: 18,
-            background: 'var(--accentbg)',
-            borderLeft: '3px solid var(--accent)',
-            borderRadius: 'var(--radius-card)',
-            padding: '10px 12px',
-            fontSize: 12,
-            color: 'var(--ink2)',
-          }}
-        >
-          Adler: Your last 4 Sunday entries show a consistent reflection pattern — you might enjoy
-          turning this into a structured weekly template.
-        </div>
-      </div>
+      )}
     </div>
   );
 }
 
 function VoiceNotesTab() {
   return (
-    <div>
-      {VOICE_NOTES.map((note) => (
-        <div
-          key={note.title}
-          style={{
-            ...card,
-            padding: '14px 16px',
-            marginBottom: 8,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 12,
-          }}
-        >
-          <div
-            style={{
-              width: 28, height: 28, borderRadius: '50%',
-              background: 'var(--accentbg)', border: '1px solid var(--line)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 10, flexShrink: 0, cursor: 'pointer',
-            }}
-          >
-            ▶
-          </div>
-          <div style={{ flex: 1, fontSize: 13, fontWeight: 500, color: 'var(--ink)' }}>
-            {note.title}
-          </div>
-          <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: 'var(--faint)' }}>
-            {note.duration}
-          </div>
-          <div style={{ fontSize: 11, color: 'var(--mut)' }}>{note.date}</div>
-        </div>
-      ))}
+    <div style={{ ...card, padding: 24, maxWidth: 680, fontSize: 12.5, color: 'var(--mut)', fontStyle: 'italic' }}>
+      No voice notes yet. Send a voice message to your assistant on Telegram and it will land here.
     </div>
   );
 }

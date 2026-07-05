@@ -272,7 +272,7 @@ export async function executeTool(name: string, input: Record<string, unknown>):
           status: 'ready',
           ...(input.commId ? { commId: input.commId as string } : {}),
         };
-        setState({ drafts: [...s.drafts, draft] });
+        setState({ drafts: [...getState().drafts, draft] });
         await persistNow();
         return `Draft ${draft.id} created${draft.commId ? ' (linked to thread — will send as reply)' : ''}.`;
       }
@@ -288,7 +288,8 @@ export async function executeTool(name: string, input: Record<string, unknown>):
         } else {
           await sendEmail(draft.to, draft.re, draft.text);
         }
-        setState({ drafts: s.drafts.map((d) => d.id === draft.id ? { ...d, status: 'sent' as const } : d) });
+        // Re-read state after the network send so concurrent draft edits aren't reverted.
+        setState({ drafts: getState().drafts.map((d) => d.id === draft.id ? { ...d, status: 'sent' as const } : d) });
         await persistNow();
         return `Draft sent to ${draft.to}${draft.commId ? ' as in-thread reply' : ''}.`;
       }

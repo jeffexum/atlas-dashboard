@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { trackModelCall, audit } from './audit.js';
 import { getState, setState } from './state.js';
 import { MODELS, createCritical } from './models.js';
+import { markOk, markReauth, markError, isInvalidGrant } from './connhealth.js';
 
 let _anthropic: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -14,7 +15,10 @@ function getClient(): Anthropic {
 const CLIENT_ID = process.env.MICROSOFT_CLIENT_ID || '';
 const CLIENT_SECRET = process.env.MICROSOFT_CLIENT_SECRET || '';
 const TENANT_ID = process.env.MICROSOFT_TENANT_ID || '';
-const REDIRECT_URI = process.env.MICROSOFT_REDIRECT_URI || 'https://atlas-api-fdlq.onrender.com/api/outlook/callback';
+// Derive from the API's public base if a dedicated var isn't set; never fall back to
+// a hardcoded personal instance (that would send another user's OAuth code to it).
+const API_BASE = process.env.WEBHOOK_URL || process.env.PUBLIC_API_URL || '';
+const REDIRECT_URI = process.env.MICROSOFT_REDIRECT_URI || (API_BASE ? `${API_BASE}/api/outlook/callback` : '');
 
 const SCOPES = ['offline_access', 'User.Read', 'Mail.Read', 'Mail.Send', 'Calendars.Read'];
 
@@ -115,6 +119,7 @@ Write in markdown. Be specific — use actual names, phrases, and examples you o
 }
 
 export function getAuthUrl(): string {
+  if (!REDIRECT_URI) throw new Error('MICROSOFT_REDIRECT_URI (or WEBHOOK_URL/PUBLIC_API_URL) not configured');
   const params = new URLSearchParams({
     client_id: CLIENT_ID,
     response_type: 'code',
@@ -151,8 +156,18 @@ export async function exchangeCode(code: string): Promise<void> {
   await saveToken(tokenData);
 }
 
+let _refreshInFlight: Promise<void> | null = null;
+
 async function refreshAccessToken(): Promise<void> {
-  if (!tokenData?.refresh_token) throw new Error('No refresh token — re-auth required');
+  // Single-flight: concurrent 401s must not each POST the (rotating) refresh token,
+  // which can invalidate the token family and force a needless re-auth.
+  if (_refreshInFlight) return _refreshInFlight;
+  _refreshInFlight = _doRefresh().finally(() => { _refreshInFlight = null; });
+  return _refreshInFlight;
+}
+
+async function _doRefresh(): Promise<void> {
+  if (!tokenData?.refresh_token) { markReauth('outlook', 'no refresh token'); throw new Error('No refresh token — re-auth required'); }
 
   const body = new URLSearchParams({
     client_id: CLIENT_ID,
@@ -169,7 +184,15 @@ async function refreshAccessToken(): Promise<void> {
   });
 
   const data = await res.json() as { access_token?: string; refresh_token?: string; expires_in?: number; error?: string };
-  if (!data.access_token) throw new Error('Token refresh failed: ' + data.error);
+  if (!data.access_token) {
+    if (isInvalidGrant(data.error)) {
+      markReauth('outlook', data.error || 'invalid_grant');
+      console.error('Outlook refresh token is dead — user must reconnect. Surfaced in setup status.');
+    } else {
+      markError('outlook', data.error || 'refresh failed');
+    }
+    throw new Error('Token refresh failed: ' + data.error);
+  }
 
   tokenData = {
     access_token: data.access_token,
@@ -177,6 +200,7 @@ async function refreshAccessToken(): Promise<void> {
     expires_at: Date.now() + (data.expires_in || 3600) * 1000,
   };
   await saveToken(tokenData);
+  markOk('outlook');
 }
 
 async function getAccessToken(): Promise<string> {
@@ -259,16 +283,19 @@ export async function replyToEmail(messageId: string, body: string, replyAll = f
 }
 
 export async function sendEmail(to: string, subject: string, body: string): Promise<void> {
-  // to is a display name — look up the real address from comms
+  // Resolve the recipient by NAME (or accept a literal address). Never match on
+  // subject — that could silently send to an unrelated person who happens to share
+  // a subject line. This tool starts a NEW message, so don't force a "Re:" prefix.
   const { getState } = await import('./state.js');
   const comms = getState().comms as (ReturnType<typeof getState>['comms'][number] & { email?: string })[];
-  const comm = comms.find((c) => c.who === to || c.subject === subject);
-  const toAddress = comm?.email || (to.includes('@') ? to : '');
-  if (!toAddress) throw new Error(`Cannot resolve email address for "${to}" — sync inbox first`);
+  const toAddress = to.includes('@')
+    ? to.trim()
+    : (comms.find((c) => c.who === to)?.email || '');
+  if (!toAddress) throw new Error(`Cannot resolve email address for "${to}" — pass a full address or sync inbox first`);
 
   await graphPost('/me/sendMail', {
     message: {
-      subject: subject ? `Re: ${subject}` : '(no subject)',
+      subject: subject || '(no subject)',
       body: { contentType: 'Text', content: body },
       toRecipients: [{ emailAddress: { address: toAddress } }],
     },
@@ -375,7 +402,15 @@ Reply with just the numbers, comma-separated. Example: 1,3,5`,
   return new Set(emails.filter((_, i) => indices.has(i)).map((e) => e.id));
 }
 
+let _syncMailInFlight: Promise<void> | null = null;
 export async function syncMail(): Promise<void> {
+  // Single-flight: interval + webhook + manual + agent tool can all trigger this.
+  if (_syncMailInFlight) return _syncMailInFlight;
+  _syncMailInFlight = _syncMail().finally(() => { _syncMailInFlight = null; });
+  return _syncMailInFlight;
+}
+
+async function _syncMail(): Promise<void> {
   // 30-day window
   const since = new Date();
   since.setDate(since.getDate() - 30);
@@ -463,19 +498,21 @@ export async function syncMail(): Promise<void> {
 
   // Preserve snoozed/dismissed status across re-syncs so hidden emails stay hidden,
   // and keep Gmail comms (gm- prefix) — this sync owns only Outlook messages
-  const priorComms = getState().comms;
-  const priorStatus = new Map(priorComms.map((c) => [c.id, c.status]));
+  const st = getState();
+  const priorComms = st.comms;
+  const overrides = st.commStatusOverrides;
   const gmailComms = priorComms.filter((c) => c.id.startsWith('gm-'));
   const merged = [
     ...gmailComms,
     ...comms.map((c) => {
-      const prior = priorStatus.get(c.id);
-      return prior && prior !== 'open' ? { ...c, status: prior } : c;
+      const hidden = overrides[c.id];
+      return hidden ? { ...c, status: hidden } : c;
     }),
   ];
 
   console.log(`[syncMail] ${inboxMessages.length} fetched → ${candidates.length} unreplied/non-automated → ${merged.length} actionable`);
   setState({ comms: merged });
+  markOk('outlook');
 }
 
 export async function syncCalendar(): Promise<void> {

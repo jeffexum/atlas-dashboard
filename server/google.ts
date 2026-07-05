@@ -3,10 +3,12 @@
 import { getState, setState } from './state.js';
 import { USER } from './config.js';
 import type { CalEvent } from './state.js';
+import { markOk, markReauth, markError, isInvalidGrant } from './connhealth.js';
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || 'https://atlas-api-fdlq.onrender.com/api/google/callback';
+const _API_BASE = process.env.WEBHOOK_URL || process.env.PUBLIC_API_URL || '';
+const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || (_API_BASE ? `${_API_BASE}/api/google/callback` : '');
 
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL || process.env.UPSTASH_REDIS_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.UPSTASH_REDIS_TOKEN;
@@ -58,6 +60,7 @@ export function isGoogleAuthenticated(): boolean {
 
 export function getGoogleAuthUrl(): string {
   if (!GOOGLE_CLIENT_ID) throw new Error('GOOGLE_CLIENT_ID not configured');
+  if (!GOOGLE_REDIRECT_URI) throw new Error('GOOGLE_REDIRECT_URI (or WEBHOOK_URL/PUBLIC_API_URL) not configured');
   const params = new URLSearchParams({
     client_id: GOOGLE_CLIENT_ID,
     redirect_uri: GOOGLE_REDIRECT_URI,
@@ -99,16 +102,22 @@ export async function exchangeGoogleCode(code: string): Promise<void> {
   };
   await saveToken({
     access_token: data.access_token,
-    refresh_token: data.refresh_token,
+    // Google only returns a refresh_token on first consent; keep the existing one if omitted.
+    refresh_token: data.refresh_token ?? _token?.refresh_token,
     expires_at: Date.now() + (data.expires_in - 60) * 1000,
     token_type: data.token_type,
-    scope: data.scope,
+    scope: data.scope ?? _token?.scope,
   });
+  markOk('google');
   console.log('[google] OAuth token obtained');
 }
 
 export function hasGmailScope(): boolean {
   return !!_token?.scope?.includes('gmail.readonly');
+}
+
+export function hasGmailSendScope(): boolean {
+  return !!_token?.scope?.includes('gmail.send');
 }
 
 export async function getGoogleAccessToken(): Promise<string> {
@@ -131,7 +140,17 @@ async function getAccessToken(): Promise<string> {
       grant_type: 'refresh_token',
     }),
   });
-  if (!res.ok) throw new Error(`Token refresh failed: ${res.status}`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    // Testing-mode Google OAuth apps expire refresh tokens after 7 days → invalid_grant.
+    if (isInvalidGrant(text) || res.status === 400) {
+      markReauth('google', 'invalid_grant');
+      console.error('Google refresh token is dead — user must reconnect (publish the OAuth app to stop 7-day expiry). Surfaced in setup status.');
+    } else {
+      markError('google', `refresh ${res.status}`);
+    }
+    throw new Error(`Token refresh failed: ${res.status}`);
+  }
   const data = await res.json() as { access_token: string; expires_in: number };
   _token = {
     ..._token,
@@ -139,6 +158,7 @@ async function getAccessToken(): Promise<string> {
     expires_at: Date.now() + (data.expires_in - 60) * 1000,
   };
   await saveToken(_token);
+  markOk('google');
   return _token.access_token;
 }
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-import { useStore } from '../store/useStore';
+import { useStore, notifyError, setEditingDraft } from '../store/useStore';
 import type { Draft } from '../store/useStore';
 import type { Screen } from '../App';
 
@@ -204,6 +204,7 @@ function DraftComposer({ draft, who, commId }: { draft: Draft; who: string; comm
   const [refineInput, setRefineInput] = useState('');
   const [refining, setRefining] = useState(false);
   const [showScheduler, setShowScheduler] = useState(false);
+  const [sending, setSending] = useState(false);
 
   // Insert an offered time before the signoff (or append), as a bulleted offer list.
   function insertTimeLine(line: string) {
@@ -276,7 +277,8 @@ function DraftComposer({ draft, who, commId }: { draft: Draft; who: string; comm
         <textarea
           value={draft.text}
           onChange={(e) => updateDraftText(draft.id, e.target.value)}
-          onBlur={(e) => saveDraftText(draft.id, e.target.value)}
+          onFocus={() => setEditingDraft(draft.id)}
+          onBlur={(e) => { setEditingDraft(null); saveDraftText(draft.id, e.target.value); }}
           spellCheck
           style={{
             flex: 1,
@@ -344,7 +346,8 @@ function DraftComposer({ draft, who, commId }: { draft: Draft; who: string; comm
       {/* Footer actions */}
       <div style={{ display: 'flex', gap: 8, padding: '10px 12px', borderTop: '1px solid var(--line2)', alignItems: 'center' }}>
         <button
-          onClick={() => sendDraft(draft.id)}
+          onClick={() => { if (sending) return; setSending(true); sendDraft(draft.id); }}
+          disabled={sending}
           style={{
             padding: '6px 18px',
             fontSize: 13,
@@ -353,11 +356,12 @@ function DraftComposer({ draft, who, commId }: { draft: Draft; who: string; comm
             color: '#fff',
             border: 'none',
             borderRadius: 6,
-            cursor: 'pointer',
+            cursor: sending ? 'default' : 'pointer',
+            opacity: sending ? 0.6 : 1,
             fontFamily: 'inherit',
           }}
         >
-          Send reply
+          {sending ? 'Sending…' : 'Send reply'}
         </button>
         <button
           onClick={() => discardDraft(draft.id)}
@@ -397,7 +401,6 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
   const discardDraft = useStore((s) => s.discardDraft);
   const acceptAction = useStore((s) => s.acceptAction);
   const dismissAction = useStore((s) => s.dismissAction);
-  const draftReplyForComm = useStore((s) => s.draftReplyForComm);
 
   const [syncing, setSyncing] = useState(false);
   const [learning, setLearning] = useState(false);
@@ -426,7 +429,7 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
   const [editText, setEditText] = useState('');
   const [recentlyDiscarded, setRecentlyDiscarded] = useState<string | null>(null);
   const undoDiscardDraft = useStore((s) => s.undoDiscardDraft);
-  const updateDraftText = useStore((s) => s.updateDraftText);
+  const saveDraftText = useStore((s) => s.saveDraftText);
 
   function handleDiscard(id: string) {
     discardDraft(id);
@@ -445,7 +448,7 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
   }
 
   function handleSaveEdit(id: string) {
-    updateDraftText(id, editText);
+    saveDraftText(id, editText); // persist to server, not just local state
     setEditingDraftId(null);
   }
 
@@ -471,6 +474,7 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
   }
 
   async function handleDraftReply(commId: string) {
+    if (draftedId) return; // guard against double-clicks producing duplicate drafts
     setDraftedId(commId);
     setExpandedId(commId); // composer opens inline under the email
     try {
@@ -479,12 +483,9 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ commId }),
       });
-      if (!res.ok) {
-        // fallback to local template
-        draftReplyForComm(commId);
-      }
+      if (!res.ok) notifyError('Adler could not draft a reply — try again');
     } catch {
-      draftReplyForComm(commId);
+      notifyError('Could not reach the server to draft a reply');
     }
     setDraftedId(null);
   }

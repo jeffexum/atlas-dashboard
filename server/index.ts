@@ -6,6 +6,7 @@ import { USER } from './config.js';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { getState, setState, persistNow, addHabit, deleteHabit, toggleHabitToday, recomputeAllHabits, dismissComm, snoozeComm, addShoppingItem, toggleShoppingItem, deleteShoppingItem, clearBoughtShoppingItems } from './state.js';
+import type { Comm } from './state.js';
 import { runAgent } from './agents.js';
 import { adlerProactiveCheck, generateBriefing, runPartnerAdler } from './adler.js';
 import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, replyToEmail, fetchEmailBody } from './outlook.js';
@@ -24,39 +25,104 @@ import { createTelegramBot, activeChatIds, sendMorningBriefing, sendHabitReminde
 const app = express();
 const BOOTED_AT = new Date().toISOString();
 const PORT = parseInt(process.env.PORT || '3001', 10);
-const FRONTEND_URL = process.env.FRONTEND_URL || '*';
+const IS_PROD = process.env.NODE_ENV === 'production';
+// Exact origin required (not '*') so credentialed (cookie) requests are allowed.
+const FRONTEND_URL = process.env.FRONTEND_URL || (IS_PROD ? '' : '*');
 
-app.use(cors({ origin: FRONTEND_URL }));
+app.use(cors({ origin: FRONTEND_URL || false, credentials: true }));
 app.use(express.json({ limit: '2mb' }));
 
 // ── API auth ──────────────────────────────────────────────────────────────────
-// Set ATLAS_SECRET to require a bearer token on all API routes. Disabled when
-// unset (backwards compatible). Exemptions: OAuth redirects/callbacks (browser
-// navigations can't send headers) and the Telegram webhook (validated by path).
+// Two accepted credentials:
+//  1. Session cookie (real login) — how the browser authenticates after /api/login.
+//  2. Bearer ATLAS_SECRET — for programmatic/server-to-server access (kept for
+//     backward compatibility and tooling); never shipped in the frontend bundle.
+// Exemptions: login/session endpoints, OAuth redirects/callbacks (browser
+// navigations can't send credentials), and webhooks (validated by their own token).
+import crypto from 'crypto';
+import { COOKIE_NAME, verifyToken, verifyPassword, mintToken, sessionCookie, clearCookie, parseCookies, loginConfigured, LOGIN_PASSWORD } from './session.js';
+
 const ATLAS_SECRET = process.env.ATLAS_SECRET;
+const AUTH_CONFIGURED = !!(ATLAS_SECRET || loginConfigured());
 const AUTH_EXEMPT = new Set([
   '/api/outlook/auth', '/api/outlook/callback',
   '/api/google/auth', '/api/google/callback',
+  '/api/login', '/api/session',
 ]);
 
+function bearerOk(req: Request): boolean {
+  if (!ATLAS_SECRET) return false;
+  const header = req.headers.authorization?.replace(/^Bearer\s+/i, '');
+  const key = header || (req.path === '/api/events' ? (req.query.key as string | undefined) : undefined);
+  if (!key) return false;
+  const a = Buffer.from(key);
+  const b = Buffer.from(ATLAS_SECRET);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+function cookieOk(req: Request): boolean {
+  return verifyToken(parseCookies(req.headers.cookie)[COOKIE_NAME]);
+}
+
 app.use((req: Request, res: Response, next) => {
-  if (!ATLAS_SECRET) { next(); return; }
   if (req.path.startsWith('/webhook')) { next(); return; }
   if (AUTH_EXEMPT.has(req.path)) { next(); return; }
-  const header = req.headers.authorization?.replace(/^Bearer\s+/i, '');
-  const key = header || (req.query.key as string | undefined); // ?key= for EventSource
-  if (key === ATLAS_SECRET) { next(); return; }
+  // Fail CLOSED in production: if no auth mechanism is configured, refuse API access
+  // rather than silently exposing everything.
+  if (!AUTH_CONFIGURED) {
+    if (IS_PROD) { res.status(503).json({ error: 'auth not configured — set ATLAS_PASSWORD (and SESSION_SECRET) or ATLAS_SECRET' }); return; }
+    next(); return; // local dev convenience only
+  }
+  if (cookieOk(req) || bearerOk(req)) { next(); return; }
   res.status(401).json({ error: 'unauthorized' });
+});
+
+// ── Login / session ────────────────────────────────────────────────────────────
+app.post('/api/login', (req: Request, res: Response) => {
+  if (!loginConfigured()) { res.status(503).json({ error: 'login not configured' }); return; }
+  const { password } = (req.body || {}) as { password?: string };
+  if (!verifyPassword(password)) { res.status(401).json({ error: 'invalid password' }); return; }
+  res.setHeader('Set-Cookie', sessionCookie(mintToken()));
+  res.json({ ok: true });
+});
+
+app.post('/api/logout', (_req: Request, res: Response) => {
+  res.setHeader('Set-Cookie', clearCookie());
+  res.json({ ok: true });
+});
+
+app.get('/api/session', (req: Request, res: Response) => {
+  res.json({
+    authed: cookieOk(req) || bearerOk(req),
+    loginConfigured: !!LOGIN_PASSWORD,
+    authRequired: AUTH_CONFIGURED,
+  });
 });
 
 // ── SSE clients ──────────────────────────────────────────────────────────────
 
 const sseClients = new Set<Response>();
 
+// Trim heavy fields the dashboard never renders (full email bodies, 200KB knowledge
+// doc contents) from the pushed payload — keeps each SSE frame small. Bodies are
+// fetched on demand via /api/comms/:id/body; knowledge shows as a name list.
+function slimState() {
+  const s = getState();
+  return {
+    ...s,
+    comms: s.comms.map((c) => { const { body, ...rest } = c as Comm & { body?: string }; return rest; }),
+    knowledge: s.knowledge.map((k) => { const { content, ...rest } = k as { content?: string }; return { ...rest, hasContent: !!content }; }),
+  };
+}
+
 function broadcastState() {
-  const data = JSON.stringify(getState());
+  const data = JSON.stringify(slimState());
   for (const res of sseClients) {
-    res.write(`data: ${data}\n\n`);
+    if (!res.write(`data: ${data}\n\n`)) {
+      // Client can't keep up — drop it rather than buffer unbounded in memory.
+      try { res.end(); } catch { /* already closing */ }
+      sseClients.delete(res);
+    }
   }
 }
 
@@ -70,8 +136,27 @@ app.get('/api/state', (_req: Request, res: Response) => {
   res.json(getState());
 });
 
+// Restricted: only calNote (the shared planner note) is writable via this route.
+// Every other collection has its own validated endpoint; a blanket overwrite was a
+// remote-wipe footgun.
 app.post('/api/state', (req: Request, res: Response) => {
-  setState(req.body);
+  const body = (req.body || {}) as Record<string, unknown>;
+  if (typeof body.calNote === 'string') {
+    setState({ calNote: body.calNote });
+  }
+  res.json({ ok: true });
+});
+
+// Persist a user-authored collection (goals, books, ideas, journal, manual calendar
+// events). Whitelisted so it can't overwrite server-owned collections like comms.
+const WRITABLE_COLLECTIONS = new Set(['goals', 'books', 'ideas', 'journalEntries', 'calEvents']);
+app.put('/api/collection/:name', async (req: Request, res: Response) => {
+  const name = String(req.params.name);
+  if (!WRITABLE_COLLECTIONS.has(name)) { res.status(400).json({ error: 'not a writable collection' }); return; }
+  const items = (req.body || {}).items;
+  if (!Array.isArray(items)) { res.status(400).json({ error: 'items array required' }); return; }
+  setState({ [name]: items } as unknown as Parameters<typeof setState>[0]);
+  await persistNow();
   res.json({ ok: true });
 });
 
@@ -236,22 +321,25 @@ app.get('/api/outlook/status', (_req: Request, res: Response) => {
 });
 
 app.post('/api/drafts/send', async (req: Request, res: Response) => {
-  const { draftId } = req.body as { draftId: string };
-  const s = getState();
-  const draft = s.drafts.find((d) => d.id === draftId);
-  if (!draft) { res.status(404).json({ error: 'draft not found' }); return; }
+  // Accept optional `text` so the client can send exactly what's on screen, avoiding
+  // a race where a just-edited draft sends its pre-edit stored copy.
+  const { draftId, text } = req.body as { draftId: string; text?: string };
+  const found = getState().drafts.find((d) => d.id === draftId);
+  if (!found) { res.status(404).json({ error: 'draft not found' }); return; }
+  if (found.status === 'sent') { res.status(409).json({ error: 'draft already sent' }); return; }
   if (!isAuthenticated() && !isGmailConnected()) { res.status(401).json({ error: 'No mail account connected', authUrl: '/api/outlook/auth' }); return; }
+  const bodyText = typeof text === 'string' && text.trim() ? text : found.text;
   try {
     // Drafts linked to an inbox email send as in-thread replies, not new threads
-    if (draft.commId?.startsWith('gm-')) {
-      await replyGmail(draft.commId, draft.text);
-    } else if (draft.commId) {
-      await replyToEmail(draft.commId, draft.text);
+    if (found.commId?.startsWith('gm-')) {
+      await replyGmail(found.commId, bodyText);
+    } else if (found.commId) {
+      await replyToEmail(found.commId, bodyText);
     } else {
-      await sendEmail(draft.to, draft.re, draft.text);
+      await sendEmail(found.to, found.re, bodyText);
     }
-    setState({ drafts: s.drafts.map((d) => d.id === draftId ? { ...d, status: 'sent' as const } : d) });
-    audit('user', 'route:draft-send', draftId, `to ${draft.to} re "${draft.re}"`).catch(() => {});
+    setState({ drafts: getState().drafts.map((d) => d.id === draftId ? { ...d, text: bodyText, status: 'sent' as const } : d) });
+    audit('user', 'route:draft-send', draftId, `to ${found.to} re "${found.re}"`).catch(() => {});
     await persistNow();
     res.json({ ok: true });
   } catch (err) {
@@ -517,7 +605,9 @@ app.delete('/api/knowledge/:id', async (req: Request, res: Response) => {
 app.get('/api/setup/status', async (_req: Request, res: Response) => {
   const s = getState();
   const { getSubscriptionStatus } = await import('./webhooks.js');
+  const { connHealth } = await import('./connhealth.js');
   const graphWebhook = await getSubscriptionStatus().catch(() => ({ active: false }));
+  const health = connHealth();
   res.json({
     graphWebhook: graphWebhook.active,
     user: USER.name,
@@ -528,10 +618,15 @@ app.get('/api/setup/status', async (_req: Request, res: Response) => {
     gmail: isGmailConnected(),
     oura: isOuraConfigured(),
     telegram: !!process.env.TELEGRAM_BOT_TOKEN,
-    apiSecured: !!process.env.ATLAS_SECRET,
+    apiSecured: !!process.env.ATLAS_SECRET || !!process.env.ATLAS_PASSWORD,
     styleProfile: !!s.userProfile,
     knowledgeDocs: s.knowledge.length,
     goodreads: isGoodreadsConfigured(),
+    // Surface dead connections so the UI can prompt a reconnect instead of going silently stale.
+    needsReauth: {
+      outlook: health.outlook.needsReauth,
+      google: health.google.needsReauth,
+    },
   });
 });
 
@@ -826,17 +921,25 @@ const WEBHOOK_BASE = process.env.WEBHOOK_URL || process.env.FRONTEND_URL?.replac
 if (TELEGRAM_TOKEN && WEBHOOK_BASE) {
   const webhookPath = `/webhook/telegram`;
   const webhookUrl = `${WEBHOOK_BASE}${webhookPath}`;
+  // Secret token Telegram echoes back in a header on every webhook POST, so we can
+  // reject forged updates. Derived from ATLAS_SECRET (or bot token) — never guessable.
+  const TG_SECRET = (process.env.ATLAS_SECRET || TELEGRAM_TOKEN).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 256);
   bot = createTelegramBot(webhookUrl);
 
   app.post('/webhook/telegram', (req: Request, res: Response) => {
+    if (req.get('X-Telegram-Bot-Api-Secret-Token') !== TG_SECRET) {
+      console.warn('Rejected Telegram webhook with bad/missing secret token');
+      res.sendStatus(401);
+      return;
+    }
     bot!.processUpdate(req.body);
     res.sendStatus(200);
   });
 
-  // Register webhook with Telegram
+  // Register webhook with Telegram (with the secret token so forged POSTs are rejected)
   async function registerWebhook() {
     try {
-      const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/setWebhook?url=${encodeURIComponent(webhookUrl)}`;
+      const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/setWebhook?url=${encodeURIComponent(webhookUrl)}&secret_token=${encodeURIComponent(TG_SECRET)}`;
       const resp = await fetch(url);
       const data = await resp.json() as { ok: boolean; description?: string };
       if (data.ok) {
@@ -896,32 +999,37 @@ setInterval(() => {
 }, 60_000);
 
 // Load persisted state then generate briefing
-import { loadPersistedState, migrateLegacyState } from './state.js';
-loadPersistedState()
-  .then(() => migrateLegacyState())
-  .then(() => {
-    // Clear corrupt calNote (accumulated JSON-encoding garbage)
-    setState({ calNote: '' });
-    persistNow().catch(() => {});
-  })
-  .then(() => recomputeAllHabits())
-  .then(() => loadOutlookToken())
-  .then(() => loadGoogleToken())
-  .then(() => {
-    // Learn Jeff's email style once if we've never done it
-    if (isAuthenticated() && !getState().userProfile) {
-      learnUserProfile()
-        .then(() => persistNow())
-        .then(() => console.log('User style profile learned at boot'))
-        .catch((err) => console.warn('Boot profile learn failed:', (err as Error).message));
-    }
-  })
-  .then(() => { if (isOuraConfigured()) return syncOura().catch((e) => console.warn('Oura boot sync failed:', (e as Error).message)); })
-  .then(() => { if (isGoodreadsConfigured()) return syncGoodreads().catch((e) => console.warn('Goodreads boot sync failed:', (e as Error).message)); })
-  .then(() => { sweepDelegationStatuses(); return extractDelegations().catch(() => {}); })
-  .then(() => ensureGraphSubscription().catch(() => {}))
-  .then(() => generateBriefing())
-  .catch(() => {});
+import { loadPersistedState, migrateLegacyState, isLoadedOk } from './state.js';
+(async () => {
+  await loadPersistedState();
+  if (!isLoadedOk()) {
+    console.error('Boot: state load did not succeed — skipping boot syncs to avoid clobbering data. Will operate read-only until Redis recovers.');
+    return;
+  }
+  await migrateLegacyState().catch(() => {});
+  try { recomputeAllHabits(); } catch { /* non-fatal */ }
+
+  // Load OAuth tokens (independent providers — one failing must not block the other).
+  await Promise.allSettled([loadOutlookToken(), loadGoogleToken()]);
+
+  // Learn the user's email style once if we've never done it.
+  if (isAuthenticated() && !getState().userProfile) {
+    learnUserProfile()
+      .then(() => persistNow())
+      .then(() => console.log('User style profile learned at boot'))
+      .catch((err) => console.warn('Boot profile learn failed:', (err as Error).message));
+  }
+
+  // Independent boot syncs — run concurrently, isolate failures.
+  await Promise.allSettled([
+    isOuraConfigured() ? syncOura() : Promise.resolve(),
+    isGoodreadsConfigured() ? syncGoodreads() : Promise.resolve(),
+    (async () => { sweepDelegationStatuses(); await extractDelegations(); })(),
+    ensureGraphSubscription(),
+  ]);
+
+  await generateBriefing().catch((e) => console.warn('Boot briefing failed:', (e as Error).message));
+})().catch((e) => console.error('Boot chain error:', (e as Error).message));
 
 // Oura re-sync every 2 hours (new sleep data lands once a day, but readiness/activity update)
 setInterval(() => {

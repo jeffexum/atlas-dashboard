@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import Shell from './components/Shell';
-import { initFromServer, subscribeToServerEvents } from './store/useStore';
+import Login from './components/Login';
+import Toast from './components/Toast';
+import { initFromServer, subscribeToServerEvents, useStore } from './store/useStore';
+import { checkSession, API_URL } from './auth';
 
 export type Screen =
   | 'home'
@@ -20,17 +23,39 @@ export type Screen =
   | 'setup'
   | 'eval';
 
+type Auth = 'checking' | 'in' | 'out';
+
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home');
+  const [auth, setAuth] = useState<Auth>('checking');
 
   useEffect(() => {
-    initFromServer();
-    const unsubscribe = subscribeToServerEvents();
-    // Refresh Oura data on every page load (fire-and-forget; SSE delivers the update)
-    const API = import.meta.env.VITE_API_URL || '';
-    fetch(`${API}/api/oura/sync`).catch(() => {});
-    return unsubscribe;
+    checkSession().then((s) => {
+      // If auth isn't required (local dev) or already authed, go straight in.
+      setAuth(!s.authRequired || s.authed ? 'in' : 'out');
+    });
   }, []);
 
-  return <Shell screen={screen} setScreen={setScreen} />;
+  useEffect(() => {
+    if (auth !== 'in') return;
+    initFromServer();
+    const unsubscribe = subscribeToServerEvents((connected) => useStore.setState({ sseConnected: connected }));
+    // Refresh Oura data on load (fire-and-forget; SSE delivers the update)
+    fetch(`${API_URL}/api/oura/sync`).catch(() => {});
+    return unsubscribe;
+  }, [auth]);
+
+  if (auth === 'checking') {
+    return <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--mut)', background: 'var(--bg)', fontSize: 13 }}>Loading…</div>;
+  }
+  if (auth === 'out') {
+    return <Login onSuccess={() => setAuth('in')} />;
+  }
+
+  return (
+    <>
+      <Shell screen={screen} setScreen={setScreen} />
+      <Toast />
+    </>
+  );
 }

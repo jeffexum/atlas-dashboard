@@ -55,8 +55,8 @@ export default function AskBar({ setScreen }: Props) {
       setResponse(`${agentName}: ${result.text}`);
       setTimeout(() => setResponse(''), 4000);
     } catch {
-      setResponse('Got it!');
-      setTimeout(() => setResponse(''), 2000);
+      setResponse("Couldn't reach the assistant — check your connection and try again.");
+      setTimeout(() => setResponse(''), 5000);
     } finally {
       setIsLoading(false);
     }

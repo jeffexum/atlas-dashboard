@@ -197,6 +197,9 @@ export interface ServerState {
   briefingNudges: string[];
   briefingGeneratedAt: number;
   userProfile: string;
+  // Durable dismissed/snoozed overrides keyed by comm id, so a hidden email stays
+  // hidden even if the AI scorer drops it from one sync then re-includes it later.
+  commStatusOverrides: Record<string, 'dismissed' | 'snoozed'>;
 }
 
 function makeHeatmap(rate: number, name: string): boolean[] {
@@ -229,6 +232,7 @@ const seedState: ServerState = {
   briefingNudges: [],
   briefingGeneratedAt: 0,
   userProfile: '',
+  commStatusOverrides: {},
 };
 
 // Deep clone seed so we can reset if needed
@@ -241,11 +245,20 @@ const listeners: Listener[] = [];
 
 const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL || process.env.UPSTASH_REDIS_URL;
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.UPSTASH_REDIS_TOKEN;
+const REDIS_CONFIGURED = !!(REDIS_URL && REDIS_TOKEN);
+
+// Guard against clobbering persisted data: when Redis is configured we must NOT
+// write until an initial load has verifiably succeeded, otherwise a transient
+// Redis error at boot would let the empty seed state overwrite every key.
+// When Redis is not configured (local dev) there is nothing to lose, so allow writes.
+let _loadedOk = !REDIS_CONFIGURED;
+export function isLoadedOk(): boolean { return _loadedOk; }
 
 async function redisFetch(path: string, options?: RequestInit): Promise<unknown> {
-  if (!REDIS_URL || !REDIS_TOKEN) return null;
+  if (!REDIS_CONFIGURED) return null;
   const res = await fetch(`${REDIS_URL}${path}`, {
     ...options,
+    signal: AbortSignal.timeout(15_000),
     headers: { Authorization: `Bearer ${REDIS_TOKEN}`, 'Content-Type': 'application/json', ...options?.headers },
   });
   return res.json();
@@ -301,18 +314,36 @@ const KEYS = {
   briefingNudges: 'atlas:briefingNudges',
   briefingGeneratedAt: 'atlas:briefingGeneratedAt',
   userProfile: 'atlas:userProfile',
+  commStatusOverrides: 'atlas:commStatusOverrides',
 } as const;
 
 let _persistTimer: ReturnType<typeof setTimeout> | null = null;
+// Serialize persists so an older slow flush can't land after a newer one.
+let _persistLock: Promise<unknown> = Promise.resolve();
+
+// Write-time caps so no single Redis key grows past Upstash's per-request limit.
+const CAPS = { comms: 300, calEvents: 500, health: 120, journalEntries: 500, ideas: 500, adlerMemory: 20 };
+function tail<T>(arr: T[], n: number): T[] { return arr.length > n ? arr.slice(-n) : arr; }
 
 function schedulePersist(): void {
   if (_persistTimer) clearTimeout(_persistTimer);
-  _persistTimer = setTimeout(() => persistNow(), 500);
+  _persistTimer = setTimeout(() => { persistNow().catch(() => {}); }, 500);
 }
 
 export async function persistNow(): Promise<Record<string, string>> {
   if (_persistTimer) { clearTimeout(_persistTimer); _persistTimer = null; }
+  // Chain onto the previous persist so writes never overlap or reorder.
+  const run = _persistLock.then(() => _persistNow());
+  _persistLock = run.catch(() => {});
+  return run;
+}
+
+async function _persistNow(): Promise<Record<string, string>> {
   const results: Record<string, string> = {};
+  if (REDIS_CONFIGURED && !_loadedOk) {
+    console.error('Refusing to persist: initial Redis load has not succeeded (guarding against data-loss clobber)');
+    return { _blocked: 'load-not-ok' };
+  }
   const trySet = async (key: string, value: unknown) => {
     try {
       await redisSet(key, value);
@@ -324,17 +355,17 @@ export async function persistNow(): Promise<Record<string, string>> {
   };
   await Promise.all([
     trySet(KEYS.tasks, _state.tasks),
-    trySet(KEYS.comms, _state.comms),
+    trySet(KEYS.comms, tail(_state.comms, CAPS.comms)),
     trySet(KEYS.drafts, _state.drafts),
     trySet(KEYS.proposedActions, _state.proposedActions),
     trySet(KEYS.habits, _state.habits),
     trySet(KEYS.goals, _state.goals),
     trySet(KEYS.books, _state.books),
     trySet(KEYS.highlights, _state.highlights),
-    trySet(KEYS.ideas, _state.ideas),
-    trySet(KEYS.journalEntries, _state.journalEntries),
-    trySet(KEYS.calEvents, _state.calEvents),
-    trySet(KEYS.health, _state.health),
+    trySet(KEYS.ideas, tail(_state.ideas, CAPS.ideas)),
+    trySet(KEYS.journalEntries, tail(_state.journalEntries, CAPS.journalEntries)),
+    trySet(KEYS.calEvents, tail(_state.calEvents, CAPS.calEvents)),
+    trySet(KEYS.health, tail(_state.health, CAPS.health)),
     trySet(KEYS.shopping, _state.shopping),
     trySet(KEYS.knowledge, _state.knowledge),
     trySet(KEYS.delegations, _state.delegations),
@@ -346,6 +377,7 @@ export async function persistNow(): Promise<Record<string, string>> {
     trySet(KEYS.briefingNudges, _state.briefingNudges),
     trySet(KEYS.briefingGeneratedAt, _state.briefingGeneratedAt),
     trySet(KEYS.userProfile, _state.userProfile),
+    trySet(KEYS.commStatusOverrides, _state.commStatusOverrides),
   ]);
   const failed = Object.entries(results).filter(([, v]) => v !== 'OK');
   console.log(failed.length
@@ -355,17 +387,41 @@ export async function persistNow(): Promise<Record<string, string>> {
 }
 
 
-export async function loadPersistedState(): Promise<void> {
-  try {
-    // Raw debug read so we can see exactly what Redis returns for tasks
-    const rawTasksRes = await redisFetch(`/get/${KEYS.tasks}`) as { result: unknown } | null;
-    console.log('Redis atlas:tasks raw result type:', typeof rawTasksRes?.result, '| value:', JSON.stringify(rawTasksRes?.result)?.slice(0, 200));
+// Verify Redis is actually reachable and authenticated — distinguishes a genuinely
+// empty (fresh) instance from a connection/auth failure that returns no data.
+async function redisProbe(): Promise<void> {
+  const res = await redisFetch('/get/atlas:__loadprobe__') as { result?: unknown; error?: string } | null;
+  if (res === null) return; // not configured — caller handles
+  if (res.error) throw new Error(`Redis probe error: ${res.error}`);
+  if (!('result' in res)) throw new Error('Redis probe: unexpected response shape');
+}
 
+export async function loadPersistedState(): Promise<void> {
+  if (!REDIS_CONFIGURED) { _loadedOk = true; return; }
+  // Retry with backoff — a transient error must NOT be mistaken for an empty instance.
+  const delays = [0, 1000, 3000, 8000];
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    if (delays[attempt]) await new Promise((r) => setTimeout(r, delays[attempt]));
+    try {
+      await redisProbe();
+      await _loadOnce();
+      _loadedOk = true;
+      return;
+    } catch (err) {
+      console.error(`State load attempt ${attempt + 1}/${delays.length} failed:`, (err as Error).message);
+    }
+  }
+  // All attempts failed: leave _loadedOk false so persistNow refuses to clobber Redis.
+  console.error('State load FAILED after retries — running in read-only mode (persistence disabled until a load succeeds)');
+}
+
+async function _loadOnce(): Promise<void> {
+  {
     const [
       tasks, comms, drafts, proposedActions, habits, goals, books,
       highlights, ideas, journalEntries, calEvents, health, shopping, knowledge, delegations, calNote,
       adlerNotes, adlerMemory, adlerLastContact,
-      briefingText, briefingNudges, briefingGeneratedAt, userProfile,
+      briefingText, briefingNudges, briefingGeneratedAt, userProfile, commStatusOverrides,
     ] = await Promise.all([
       redisGet<ServerState['tasks']>(KEYS.tasks),
       redisGet<ServerState['comms']>(KEYS.comms),
@@ -390,6 +446,7 @@ export async function loadPersistedState(): Promise<void> {
       redisGet<string[]>(KEYS.briefingNudges),
       redisGet<number>(KEYS.briefingGeneratedAt),
       redisGet<string>(KEYS.userProfile),
+      redisGet<ServerState['commStatusOverrides']>(KEYS.commStatusOverrides),
     ]);
 
     _state = sanitize({
@@ -416,12 +473,9 @@ export async function loadPersistedState(): Promise<void> {
       briefingNudges: Array.isArray(briefingNudges) ? briefingNudges : [],
       briefingGeneratedAt: typeof briefingGeneratedAt === 'number' ? briefingGeneratedAt : 0,
       userProfile: typeof userProfile === 'string' ? userProfile : '',
+      commStatusOverrides: (commStatusOverrides && typeof commStatusOverrides === 'object' && !Array.isArray(commStatusOverrides)) ? commStatusOverrides : {},
     });
     console.log(`State restored from Redis: ${_state.tasks.length} tasks`);
-    return;
-  } catch (err) {
-    console.error('State load error (keeping current state):', err);
-    return;
   }
 }
 
@@ -560,13 +614,21 @@ export function discardDraft(id: string): void {
 export function dismissComm(commId: string): void {
   setState({
     comms: _state.comms.map((c) => (c.id === commId ? { ...c, status: 'dismissed' as const } : c)),
+    commStatusOverrides: { ..._state.commStatusOverrides, [commId]: 'dismissed' },
   });
 }
 
 export function snoozeComm(commId: string): void {
   setState({
     comms: _state.comms.map((c) => (c.id === commId ? { ...c, status: 'snoozed' } : c)),
+    commStatusOverrides: { ..._state.commStatusOverrides, [commId]: 'snoozed' },
   });
+}
+
+// Durable hidden-status lookup for sync paths (survives the AI scorer dropping then
+// re-including an email).
+export function commStatusOverride(commId: string): 'dismissed' | 'snoozed' | undefined {
+  return _state.commStatusOverrides[commId];
 }
 
 export function addTodoFromComm(commId: string): void {

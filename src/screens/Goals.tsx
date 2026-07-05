@@ -9,13 +9,6 @@ const card: React.CSSProperties = {
   border: '1px solid var(--line)',
 };
 
-const scoutNotes: Record<string, string | null> = {
-  g1: 'behind pace',
-  g2: 'on track',
-  g3: null,
-  g4: null,
-};
-
 const GOAL_COLORS = [
   { label: 'Red', value: '#ef4444' },
   { label: 'Blue', value: '#60a5fa' },
@@ -29,7 +22,6 @@ interface Props {
 
 export default function Goals({ setScreen: _setScreen }: Props) {
   const goals = useStore((s) => s.goals);
-  const assistantName = useStore((s) => s.assistantName);
   const updateGoalProgress = useStore((s) => s.updateGoalProgress);
   const addGoal = useStore((s) => s.addGoal);
   const editGoal = useStore((s) => s.editGoal);
@@ -384,24 +376,6 @@ export default function Goals({ setScreen: _setScreen }: Props) {
                 {goal.tasks} linked task{goal.tasks !== 1 ? 's' : ''}
               </div>
 
-              {/* Scout note */}
-              {scoutNotes[goal.id] !== null && scoutNotes[goal.id] !== undefined && (
-                <div
-                  style={{
-                    display: 'inline-block',
-                    marginTop: 10,
-                    background: 'var(--accentbg)',
-                    border: '1px solid oklch(0.88 0.06 162)',
-                    borderRadius: 20,
-                    padding: '3px 10px',
-                    fontSize: 11,
-                    fontFamily: "'JetBrains Mono', monospace",
-                    color: scoutNotes[goal.id] === 'on track' ? 'var(--accent)' : 'var(--p1)',
-                  }}
-                >
-                  {assistantName}: {scoutNotes[goal.id]}
-                </div>
-              )}
             </div>
           ))}
         </div>

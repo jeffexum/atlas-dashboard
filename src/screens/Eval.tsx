@@ -49,6 +49,9 @@ export default function Eval() {
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      // Don't hijack keystrokes while the user is typing in an input/textarea (e.g. the AskBar).
+      const t = e.target as HTMLElement | null;
+      if (e.isComposing || (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable))) return;
       const l = LABELS.find((x) => x.hotkey === e.key);
       if (l) label(l.key);
       if (e.key === 's') setIdx((i) => i + 1);

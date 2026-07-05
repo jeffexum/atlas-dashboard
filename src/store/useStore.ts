@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { sseUrl } from '../auth';
+import { sseUrl, API_URL } from '../auth';
 
 export interface Task {
   id: string;
@@ -174,6 +174,9 @@ interface StoreState {
   briefingNudges: string[];
   userProfile: string;
   assistantName: string;
+  userName: string;
+  toast: { kind: 'error' | 'ok'; msg: string } | null;
+  sseConnected: boolean;
 
   acceptAction: (id: string) => void;
   dismissAction: (id: string) => void;
@@ -201,7 +204,6 @@ interface StoreState {
   startReading: (id: string) => void;
   addIdea: (title: string, body: string, tags: string[]) => void;
   addJournalEntry: (text: string) => void;
-  draftReplyForComm: (commId: string) => void;
   addCalEvent: (event: Omit<CalEvent, 'id'>) => void;
   updateCalNote: (text: string) => void;
 }
@@ -226,6 +228,9 @@ export const useStore = create<StoreState>((set) => ({
   briefingNudges: [],
   userProfile: '',
   assistantName: 'Adler',
+  userName: '',
+  toast: null,
+  sseConnected: true,
 
   acceptAction: (id) => {
     const action = useStore.getState().proposedActions.find((a) => a.id === id);
@@ -266,28 +271,27 @@ export const useStore = create<StoreState>((set) => ({
     })),
 
   sendDraft: (id) => {
+    // Send the exact text on screen (avoids sending a pre-edit stored copy).
+    const current = useStore.getState().drafts.find((d) => d.id === id);
     // Optimistically mark sent; server call will confirm or we revert on error
     set((state) => ({
       drafts: state.drafts.map((d) => (d.id === id ? { ...d, status: 'sent' } : d)),
     }));
-    const API = import.meta.env.VITE_API_URL || '';
-    fetch(`${API}/api/drafts/send`, {
+    fetch(`${API_URL}/api/drafts/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ draftId: id }),
+      body: JSON.stringify({ draftId: id, text: current?.text }),
     }).then(async (res) => {
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Send failed' }));
-        // Revert to ready so user can retry
-        set((state) => ({
-          drafts: state.drafts.map((d) => (d.id === id ? { ...d, status: 'ready' } : d)),
-        }));
-        console.error('Draft send failed:', err.error);
+        set((state) => ({ drafts: state.drafts.map((d) => (d.id === id ? { ...d, status: 'ready' } : d)) }));
+        notifyError(`Could not send: ${err.error || 'try again'}`);
+      } else {
+        notifyOk('Reply sent');
       }
     }).catch(() => {
-      set((state) => ({
-        drafts: state.drafts.map((d) => (d.id === id ? { ...d, status: 'ready' } : d)),
-      }));
+      set((state) => ({ drafts: state.drafts.map((d) => (d.id === id ? { ...d, status: 'ready' } : d)) }));
+      notifyError('Could not send — check your connection');
     });
   },
 
@@ -431,60 +435,43 @@ export const useStore = create<StoreState>((set) => ({
     fetch(`${API}/api/habits/${id}/toggle`, { method: 'POST' }).catch(() => {});
   },
 
-  updateGoalProgress: (id, pct) =>
-    set((state) => ({
-      goals: state.goals.map((g) =>
-        g.id === id ? { ...g, pct: Math.max(0, Math.min(100, pct)) } : g
-      ),
-    })),
-
-  addGoal: (name, target, deadline, color) =>
+  addGoal: (name, target, deadline, color) => {
+    const yr = `'${String(new Date().getFullYear()).slice(2)}`;
     set((state) => ({
       goals: [
         ...state.goals,
-        {
-          id: `g-${Date.now()}`,
-          name,
-          pct: 0,
-          current: '0',
-          target,
-          deadline,
-          deadlineShort: deadline.slice(0, 3) + "'26",
-          tasks: 0,
-          color,
-        },
+        { id: `g-${Date.now()}`, name, pct: 0, current: '0', target, deadline, deadlineShort: deadline.slice(0, 3) + yr, tasks: 0, color },
       ],
-    })),
+    }));
+    persistCollection('goals', useStore.getState().goals);
+  },
 
-  editGoal: (id, updates) =>
-    set((state) => ({
-      goals: state.goals.map((g) => (g.id === id ? { ...g, ...updates } : g)),
-    })),
+  editGoal: (id, updates) => {
+    set((state) => ({ goals: state.goals.map((g) => (g.id === id ? { ...g, ...updates } : g)) }));
+    persistCollection('goals', useStore.getState().goals);
+  },
 
-  updateBookProgress: (id, pct) =>
-    set((state) => ({
-      books: state.books.map((b) =>
-        b.id === id ? { ...b, pct: Math.max(0, Math.min(100, pct)) } : b
-      ),
-    })),
+  updateGoalProgress: (id, pct) => {
+    set((state) => ({ goals: state.goals.map((g) => (g.id === id ? { ...g, pct: Math.max(0, Math.min(100, pct)) } : g)) }));
+    persistCollection('goals', useStore.getState().goals);
+  },
 
-  addBook: (title, author) =>
+  updateBookProgress: (id, pct) => {
+    set((state) => ({ books: state.books.map((b) => b.id === id ? { ...b, pct: Math.max(0, Math.min(100, pct)) } : b) }));
+    persistCollection('books', useStore.getState().books);
+  },
+
+  addBook: (title, author) => {
     set((state) => ({
       books: [
         ...state.books,
-        {
-          id: `b-${Date.now()}`,
-          title,
-          author,
-          pct: 0,
-          chapter: '',
-          status: 'queue' as const,
-          gradient: 'linear-gradient(135deg, oklch(0.6 0.08 200), oklch(0.75 0.06 200))',
-        },
+        { id: `b-${Date.now()}`, title, author, pct: 0, chapter: '', status: 'queue' as const, gradient: 'linear-gradient(135deg, oklch(0.6 0.08 200), oklch(0.75 0.06 200))' },
       ],
-    })),
+    }));
+    persistCollection('books', useStore.getState().books);
+  },
 
-  reorderBook: (id, direction) =>
+  reorderBook: (id, direction) => {
     set((state) => {
       const queueBooks = state.books.filter((b) => b.status === 'queue');
       const idx = queueBooks.findIndex((b) => b.id === id);
@@ -499,67 +486,58 @@ export const useStore = create<StoreState>((set) => ({
       }
       const nonQueueBooks = state.books.filter((b) => b.status !== 'queue');
       return { books: [...nonQueueBooks, ...newQueue] };
-    }),
+    });
+    persistCollection('books', useStore.getState().books);
+  },
 
-  startReading: (id) =>
-    set((state) => ({
-      books: state.books.map((b) =>
-        b.id === id ? { ...b, status: 'reading' as const, chapter: 'ch. 1' } : b
-      ),
-    })),
+  startReading: (id) => {
+    set((state) => ({ books: state.books.map((b) => b.id === id ? { ...b, status: 'reading' as const, chapter: 'ch. 1' } : b) }));
+    persistCollection('books', useStore.getState().books);
+  },
 
-  addIdea: (title, body, tags) =>
+  addIdea: (title, body, tags) => {
     set((state) => {
       const colors = ['var(--blue)', 'var(--accent)', 'var(--violet)', 'var(--warm)', 'var(--p2)'];
       const color = colors[state.ideas.length % colors.length];
-      return {
-        ideas: [
-          { id: `i-${Date.now()}`, title, body, tags, color },
-          ...state.ideas,
-        ],
-      };
-    }),
+      return { ideas: [{ id: `i-${Date.now()}`, title, body, tags, color }, ...state.ideas] };
+    });
+    persistCollection('ideas', useStore.getState().ideas);
+  },
 
-  addJournalEntry: (text) =>
-    set((state) => ({
-      journalEntries: [
-        { id: `j-${Date.now()}`, date: 'Jun 29, 2026', text },
-        ...state.journalEntries,
-      ],
-    })),
+  addJournalEntry: (text) => {
+    const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    set((state) => ({ journalEntries: [{ id: `j-${Date.now()}`, date, text }, ...state.journalEntries] }));
+    persistCollection('journalEntries', useStore.getState().journalEntries);
+  },
 
-  draftReplyForComm: (commId) =>
-    set((state) => {
-      const comm = state.comms.find((c) => c.id === commId);
-      if (!comm) return state;
-      const firstName = comm.who.split(' ')[0];
-      return {
-        drafts: [
-          ...state.drafts,
-          {
-            id: Date.now().toString(),
-            to: comm.who,
-            re: comm.subject,
-            text: `Hi ${firstName}, thanks for reaching out. I'll get back to you shortly. — Jeff`,
-            status: 'ready' as const,
-          },
-        ],
-      };
-    }),
+  addCalEvent: (event) => {
+    set((state) => ({ calEvents: [...state.calEvents, { ...event, id: `ce-${Date.now()}` }] }));
+    persistCollection('calEvents', useStore.getState().calEvents);
+  },
 
-  addCalEvent: (event) =>
-    set((state) => ({
-      calEvents: [
-        ...state.calEvents,
-        { ...event, id: `ce-${Date.now()}` },
-      ],
-    })),
-
-  updateCalNote: (text) =>
-    set(() => ({ calNote: text })),
+  updateCalNote: (text) => {
+    set(() => ({ calNote: text }));
+    fetch(`${API_URL}/api/state`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ calNote: text }),
+    }).then((r) => { if (!r.ok) throw 0; }).catch(() => notifyError('Could not save note'));
+  },
 }));
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001'
+// ── Error surface (T15): show failures instead of swallowing them ────────────────
+export function notifyError(msg: string) { useStore.setState({ toast: { kind: 'error', msg } }); }
+export function notifyOk(msg: string) { useStore.setState({ toast: { kind: 'ok', msg } }); }
+
+// Persist a user-authored collection; surface failures rather than losing data silently.
+async function persistCollection(name: 'goals' | 'books' | 'ideas' | 'journalEntries' | 'calEvents', items: unknown[]) {
+  try {
+    const res = await fetch(`${API_URL}/api/collection/${name}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }),
+    });
+    if (!res.ok) throw new Error(String(res.status));
+  } catch {
+    notifyError('Could not save — check your connection and try again');
+  }
+}
 
 export async function askAgent(message: string, agentHint?: string) {
   const res = await fetch(`${API_URL}/api/ask`, {
@@ -681,15 +659,34 @@ export async function initFromServer() {
     if (typeof status.assistant === 'string' && status.assistant.trim()) {
       useStore.setState({ assistantName: status.assistant.trim() })
     }
+    if (typeof status.user === 'string' && status.user.trim()) {
+      useStore.setState({ userName: status.user.trim().split(' ')[0] })
+    }
   } catch {}
 }
 
-export function subscribeToServerEvents() {
-  const es = new EventSource(sseUrl(`${API_URL}/api/events`))
+// A draft the user is actively editing must not be clobbered by an SSE push.
+let _editingDraftId: string | null = null
+export function setEditingDraft(id: string | null) { _editingDraftId = id }
+
+export function subscribeToServerEvents(onStatus?: (connected: boolean) => void) {
+  const es = new EventSource(sseUrl(`${API_URL}/api/events`), { withCredentials: true })
+  es.onopen = () => onStatus?.(true)
+  es.onerror = () => onStatus?.(false)
   es.onmessage = (e) => {
     try {
-      const serverState = JSON.parse(e.data)
-      useStore.setState(sanitizeServerState(serverState))
+      const serverState = sanitizeServerState(JSON.parse(e.data))
+      const local = useStore.getState()
+      // Preserve the draft currently being edited so incoming pushes don't wipe keystrokes.
+      if (_editingDraftId) {
+        const mine = local.drafts.find((d) => d.id === _editingDraftId)
+        if (mine) {
+          serverState.drafts = (serverState.drafts as Draft[]).map((d) => d.id === _editingDraftId ? mine : d)
+          if (!serverState.drafts.some((d: Draft) => d.id === _editingDraftId)) serverState.drafts.push(mine)
+        }
+      }
+      // assistantName is client-derived from setup status, not part of the state stream.
+      useStore.setState({ ...serverState, assistantName: local.assistantName })
     } catch {}
   }
   return () => es.close()

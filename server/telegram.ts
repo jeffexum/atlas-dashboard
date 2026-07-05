@@ -19,6 +19,10 @@ const REDIS_URL = process.env.UPSTASH_REDIS_REST_URL || process.env.UPSTASH_REDI
 const REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.UPSTASH_REDIS_TOKEN;
 const TG_USERS_KEY = 'atlas:telegramUsers';
 
+// Owner is configured explicitly via env, not by "first message wins" (which let
+// a forged/stranger message claim ownership before the real owner ever wrote).
+const OWNER_CHAT_ID = (process.env.TELEGRAM_OWNER_CHAT_ID || '').trim();
+
 async function loadTgUsers(): Promise<void> {
   if (!REDIS_URL || !REDIS_TOKEN) return;
   try {
@@ -30,6 +34,11 @@ async function loadTgUsers(): Promise<void> {
       tgUsers = (parsed as Record<string, TgUser>) || {};
     }
   } catch { /* ignore */ }
+  // Seed the configured owner if not already present (idempotent).
+  if (OWNER_CHAT_ID && /^-?\d+$/.test(OWNER_CHAT_ID) && !tgUsers[OWNER_CHAT_ID]) {
+    tgUsers[OWNER_CHAT_ID] = { role: 'owner', name: USER.firstName };
+    await saveTgUsers();
+  }
 }
 
 async function saveTgUsers(): Promise<void> {
@@ -70,25 +79,26 @@ export function createTelegramBot(webhookUrl: string): TelegramBot {
   }
 
   const bot = new TelegramBot(token, { webHook: { port: 0 } });
-  loadTgUsers();
+  // Load the user table before any update can be processed. processUpdate is only
+  // called by the webhook route, which is registered after this returns, but we
+  // still gate handler logic on _usersReady to be safe against early updates.
+  const _usersReady = loadTgUsers();
 
   bot.on('message', async (msg) => {
+    await _usersReady;
     const chatId = msg.chat.id;
     const text = msg.text || '';
 
-    // ── Role resolution ──
-    // Bootstrap: the very first chat ever seen becomes the owner (Jeff).
-    if (Object.keys(tgUsers).length === 0) {
-      tgUsers[String(chatId)] = { role: 'owner', name: USER.firstName };
-      await saveTgUsers();
-    }
     const user = tgUsers[String(chatId)];
 
-    // Unknown person — no access until Jeff approves
+    // Unknown person — no access until the owner approves. No implicit ownership.
     if (!user) {
+      const ownerKnown = Object.values(tgUsers).some((u) => u.role === 'owner');
       await bot.sendMessage(
         chatId,
-        `This is a private assistant. Ask ${USER.firstName} to approve you — they need to send:\n\n/approve ${chatId} YourName`
+        ownerKnown
+          ? `This is a private assistant. Ask ${USER.firstName} to approve you — they need to send:\n\n/approve ${chatId} YourName`
+          : `This assistant has no owner configured yet. Set TELEGRAM_OWNER_CHAT_ID=${chatId} in the server environment to claim it.`
       );
       return;
     }

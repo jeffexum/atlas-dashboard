@@ -80,7 +80,7 @@ export default function Assistant({ setScreen }: Props) {
       const agentMsg: Message = {
         id: nextId.current++,
         role: 'agent',
-        text: "Got it! I'll take care of that.",
+        text: "I couldn't reach the server just now — please try again in a moment.",
         agentName: assistantName,
         agentKey: 'scout',
       };

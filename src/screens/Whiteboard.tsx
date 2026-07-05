@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import type { Screen } from '../App';
-
-const API = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+import { useStore } from '../store/useStore';
+import { API_URL as API } from '../auth';
 
 interface Attachment {
   name: string;
@@ -90,6 +90,8 @@ let _savedMessages: Message[] = [];
 let _savedSessionId: string = genId();
 
 export default function Whiteboard({ setScreen: _setScreen }: Props) {
+  const assistantName = useStore((s) => s.assistantName);
+  const userName = useStore((s) => s.userName);
   const [messages, setMessagesRaw] = useState<Message[]>(_savedMessages);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -266,8 +268,8 @@ export default function Whiteboard({ setScreen: _setScreen }: Props) {
 
   const SUGGESTED = [
     "What should I focus on today?",
-    "Help me think through Series B prep",
-    "Draft a follow-up to Agilent",
+    "Summarize my most important emails",
+    "Help me plan my week",
     "What's on my calendar this week?",
   ];
 
@@ -350,10 +352,10 @@ export default function Whiteboard({ setScreen: _setScreen }: Props) {
       {/* Empty state */}
       {messages.length === 0 && !loading && (
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, paddingBottom: 80 }}>
-          <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--violet)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, color: 'white', fontWeight: 700 }}>A</div>
+          <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'var(--violet)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, color: 'white', fontWeight: 700 }}>{(assistantName[0] || 'A').toUpperCase()}</div>
           <div style={{ fontSize: 21, fontWeight: 600, color: 'var(--ink)', fontFamily: 'Newsreader, serif' }}>Whiteboard</div>
           <div style={{ fontSize: 13, color: 'var(--mut)', textAlign: 'center', maxWidth: 380, lineHeight: 1.6 }}>
-            Think out loud with Adler. Brainstorm, workshop drafts, plan strategy — or drop in a document to analyze.
+            Think out loud with {assistantName}. Brainstorm, workshop drafts, plan strategy — or drop in a document to analyze.
           </div>
           <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
             {SUGGESTED.map((p) => (
@@ -374,12 +376,12 @@ export default function Whiteboard({ setScreen: _setScreen }: Props) {
             <div key={msg.id} style={{ display: 'flex', flexDirection: msg.role === 'user' ? 'row-reverse' : 'row', gap: 10, marginBottom: 22, alignItems: 'flex-start' }}>
               {/* Avatar */}
               <div style={{ width: 30, height: 30, borderRadius: '50%', background: msg.role === 'user' ? 'var(--ink)' : 'var(--violet)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 13, color: 'white', fontWeight: 700 }}>
-                {msg.role === 'user' ? 'J' : 'A'}
+                {msg.role === 'user' ? (userName[0] || 'Y').toUpperCase() : (assistantName[0] || 'A').toUpperCase()}
               </div>
 
               <div style={{ maxWidth: '78%', minWidth: 0 }}>
                 <div style={{ display: 'flex', gap: 6, alignItems: 'baseline', marginBottom: 4, flexDirection: msg.role === 'user' ? 'row-reverse' : 'row' }}>
-                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>{msg.role === 'user' ? 'You' : 'Adler'}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>{msg.role === 'user' ? 'You' : assistantName}</span>
                   <span style={{ fontSize: 10, color: 'var(--faint)', fontFamily: "'JetBrains Mono', monospace" }}>{fmtTime(msg.ts)}</span>
                 </div>
 
@@ -455,7 +457,7 @@ export default function Whiteboard({ setScreen: _setScreen }: Props) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Message Adler… (Enter to send, Shift+Enter for newline)"
+            placeholder={`Message ${assistantName}… (Enter to send, Shift+Enter for newline)`}
             rows={1}
             style={{ flex: 1, resize: 'none', border: 'none', outline: 'none', background: 'transparent', fontSize: 13.5, color: 'var(--ink)', fontFamily: "'Schibsted Grotesk', sans-serif", lineHeight: 1.5, overflow: 'hidden' }}
           />

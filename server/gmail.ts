@@ -68,7 +68,14 @@ const parseFrom = (from: string): { name: string; email: string } => {
   return { name: from, email: from };
 };
 
+let _syncGmailInFlight: Promise<void> | null = null;
 export async function syncGmail(): Promise<void> {
+  if (_syncGmailInFlight) return _syncGmailInFlight;
+  _syncGmailInFlight = _syncGmail().finally(() => { _syncGmailInFlight = null; });
+  return _syncGmailInFlight;
+}
+
+async function _syncGmail(): Promise<void> {
   if (!isGmailConnected()) throw new Error('Gmail not connected (re-connect Google to grant mail access)');
 
   const list = await gmailGet<{ messages?: { id: string }[] }>(
@@ -114,15 +121,15 @@ export async function syncGmail(): Promise<void> {
       };
     });
 
-  // Merge: keep Outlook comms and any prior non-open statuses on Gmail comms
-  const prior = getState().comms;
-  const priorStatus = new Map(prior.map((c) => [c.id, c.status]));
-  const outlookComms = prior.filter((c) => !c.id.startsWith('gm-'));
+  // Merge: keep Outlook comms; apply durable dismissed/snoozed overrides to Gmail comms
+  const st = getState();
+  const overrides = st.commStatusOverrides;
+  const outlookComms = st.comms.filter((c) => !c.id.startsWith('gm-'));
   const merged = [
     ...outlookComms,
     ...comms.map((c) => {
-      const p = priorStatus.get(c.id);
-      return p && p !== 'open' ? { ...c, status: p } : c;
+      const hidden = overrides[c.id];
+      return hidden ? { ...c, status: hidden } : c;
     }),
   ];
   console.log(`[syncGmail] ${messages.length} fetched → ${candidates.length} non-automated → ${comms.length} actionable`);

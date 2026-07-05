@@ -17,6 +17,7 @@ const CATEGORIES: { key: ShoppingCategory; label: string; icon: string; accent: 
 
 export default function Shopping() {
   const shopping = useStore((s) => s.shopping);
+  const userName = useStore((s) => s.userName);
   const [newName, setNewName] = useState('');
   const [newCategory, setNewCategory] = useState<ShoppingCategory>('Groceries');
   const [adding, setAdding] = useState(false);
@@ -125,7 +126,7 @@ export default function Shopping() {
                     <span style={{ flex: 1, fontSize: 13.5, color: 'var(--ink)', textDecoration: item.done ? 'line-through' : 'none' }}>
                       {item.name}
                     </span>
-                    {item.addedBy && item.addedBy !== 'Jeff' && (
+                    {item.addedBy && item.addedBy !== userName && (
                       <span style={{ fontSize: 10, padding: '1px 6px', borderRadius: 8, background: 'var(--bg)', border: '1px solid var(--line2)', color: 'var(--mut)' }}>
                         {item.addedBy}
                       </span>

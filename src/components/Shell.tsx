@@ -93,18 +93,24 @@ export default function Shell({ screen, setScreen }: Props) {
   }
   const comms = useStore((s) => s.comms);
   const assistantName = useStore((s) => s.assistantName);
+  const userName = useStore((s) => s.userName);
   const tasks = useStore((s) => s.tasks);
+  const goals = useStore((s) => s.goals);
+  const habits = useStore((s) => s.habits);
+  const books = useStore((s) => s.books);
 
   const openComms = comms.filter((c) => c.status === 'open').length;
   const urgentComms = comms.filter((c) => c.priority === 'p1' && c.status === 'open').length;
   const todayTaskCount = tasks.filter((t) => t.column === 'today').length;
+  const activeGoalCount = goals.filter((g) => g.pct < 100).length;
+  const readingCount = books.filter((b) => b.status === 'reading').length;
 
   const now = new Date();
   const greeting = now.getHours() < 12 ? 'Good morning' : now.getHours() < 17 ? 'Good afternoon' : 'Good evening';
   const dateStr = now.toLocaleDateString('en-US', { weekday: 'short', month: 'long', day: 'numeric', year: 'numeric' });
 
   const PAGE_TITLES: Record<Screen, { title: string; sub: string }> = {
-    home: { title: `${greeting}, Jeff`, sub: dateStr },
+    home: { title: userName ? `${greeting}, ${userName}` : greeting, sub: dateStr },
     inbox: { title: 'Inbox', sub: `${openComms} messages · ${urgentComms} urgent` },
     calendar: { title: 'Calendar', sub: now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) },
     todos: { title: 'To-dos', sub: `${todayTaskCount} tasks today` },
@@ -112,11 +118,11 @@ export default function Shell({ screen, setScreen }: Props) {
     delegations: { title: 'Waiting On', sub: 'what others owe you' },
     setup: { title: 'Setup', sub: 'connections & training' },
     eval: { title: 'Triage Eval', sub: 'label emails, measure precision' },
-    goals: { title: 'Goals', sub: '4 active goals' },
-    habits: { title: 'Habits', sub: '5 tracked habits' },
+    goals: { title: 'Goals', sub: `${activeGoalCount} active goal${activeGoalCount === 1 ? '' : 's'}` },
+    habits: { title: 'Habits', sub: `${habits.length} tracked habit${habits.length === 1 ? '' : 's'}` },
     health: { title: 'Health', sub: "Today's overview" },
     finances: { title: 'Finances', sub: now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) },
-    reading: { title: 'Reading', sub: '2 in progress' },
+    reading: { title: 'Reading', sub: `${readingCount} in progress` },
     ideas: { title: 'Ideas & Journal', sub: 'Your thinking space' },
     assistant: { title: assistantName, sub: 'AI assistant · ready' },
     whiteboard: { title: 'Whiteboard', sub: 'Think with your agents' },

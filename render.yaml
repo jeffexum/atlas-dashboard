@@ -41,6 +41,15 @@ services:
         value: "182820520"
       - key: ATLAS_SECRET
         sync: false
+      # Login password for the dashboard (cookie-based session auth). Required.
+      - key: ATLAS_PASSWORD
+        sync: false
+      # Signs session cookies; falls back to ATLAS_SECRET if unset.
+      - key: SESSION_SECRET
+        sync: false
+      # Optional: explicit Telegram owner chat id (replaces first-message bootstrap).
+      - key: TELEGRAM_OWNER_CHAT_ID
+        sync: false
 
   - type: web
     name: atlas-dashboard
@@ -50,8 +59,6 @@ services:
     envVars:
       - key: VITE_API_URL
         value: https://atlas-api-fdlq.onrender.com
-      - key: VITE_ATLAS_SECRET
-        sync: false
     routes:
       - type: rewrite
         source: /*

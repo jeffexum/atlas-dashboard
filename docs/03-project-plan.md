@@ -3,11 +3,11 @@ Companion to `02-product-spec.md`. Original draft's Phase 2 (multi-tenant) and P
 are swapped per research §8.3 and Decision D-002. Items already shipped are marked ✅.
 
 ## Phase A — Harden + close gaps (now; no gate)
-- [ ] A.1 **Delegation tracker** — commitment extraction from email (work + personal), owner/due/source-link, T-1 nag via Telegram, slips escalate into briefing, one-click done
-- [ ] A.2 **Audit log + agent_runs cost telemetry** — every agent action logged; every model call with tokens/cost; internal $/day view, >$3/day alert
-- [ ] A.3 **Triage eval set** — label ~200 real emails (labeling UI), measure Haiku precision, iterate ≥85%; brief thumbs-up/down feeds per-instance eval
-- [ ] A.4 **Graph webhooks + reconciliation sweep** — real-time mail ingestion, subscription auto-renewal (Gmail: watch via pub/sub later; poll acceptable meanwhile)
-- [ ] A.5 Prompts extracted to `/prompts`, versioned
+- [x] A.1 **Delegation tracker** ✅ 2026-07-05 — extraction live on real inbox — commitment extraction from email (work + personal), owner/due/source-link, T-1 nag via Telegram, slips escalate into briefing, one-click done
+- [x] A.2 **Audit log + agent_runs cost telemetry** ✅ 2026-07-05 — Setup screen cards + /api/admin/* — every agent action logged; every model call with tokens/cost; internal $/day view, >$3/day alert
+- [~] A.3 **Triage eval set** — tooling shipped 2026-07-05 (Triage Eval screen); labeling ~200 emails = Jeff's task, then measure — label ~200 real emails (labeling UI), measure Haiku precision, iterate ≥85%; brief thumbs-up/down feeds per-instance eval
+- [x] A.4 **Graph webhooks + reconciliation sweep** ✅ 2026-07-05 — subscription + hourly renewal + 30-min sweep — real-time mail ingestion, subscription auto-renewal (Gmail: watch via pub/sub later; poll acceptable meanwhile)
+- [x] A.5 Prompt registry in `/prompts/README.md` ✅ 2026-07-05 (prompts stay in code; registry indexes every one)
 - ✅ Model router/tiering · ✅ Approval queue (drafts) · ✅ Morning brief · ✅ Deployable instance template + setup wizard · ✅ Instance auth
 - **CHECKPOINT:** Jeff uses brief + delegations daily for 2 weeks and reports net time saved.
 

@@ -77,6 +77,7 @@ assistant) in a single reasoning loop. Nothing built to date gets cut or feature
 | D-004 | 2026-07-04 | Model tiers: Haiku/Sonnet/Fable 5 with refusal fallback, env-overridable | single model | Cost + quality; Fable for outward-facing voice |
 
 ## 7. STATUS
+- **2026-07-05 (later)** — Phase A build complete: A.1 delegation tracker (live, extracting from real inbox), A.2 audit+cost telemetry (briefing run tracked at $0.048), A.3 eval tooling (labeling UI ready — NEEDS JEFF: label ~200 emails, then run measurement), A.4 Graph webhooks (handshake verified) + 30-min reconciliation, A.5 prompt registry. Remaining before Phase A checkpoint: Jeff's 2-week daily-usage test.
 - **2026-07-05** — Docs committed to repo with corrected current-state and D-001..D-004. Phase A begins: A.1 delegation tracker.
 
 ## 8. Open Questions — NEEDS JEFF

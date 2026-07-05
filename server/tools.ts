@@ -155,6 +155,11 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
     description: 'Add a journal entry',
     input_schema: { type: 'object' as const, properties: { text: { type: 'string' } }, required: ['text'] },
   },
+  {
+    name: 'read_document',
+    description: 'Read the full text of an uploaded knowledge document (see KNOWLEDGE DOCUMENTS in context for ids)',
+    input_schema: { type: 'object' as const, properties: { id: { type: 'string' } }, required: ['id'] },
+  },
   // ── Memory ──
   {
     name: 'write_memory_section',
@@ -347,6 +352,11 @@ export async function executeTool(name: string, input: Record<string, unknown>):
         const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
         setState({ journalEntries: [{ id: `j-${Date.now()}`, date, text: input.text as string }, ...s.journalEntries] });
         return 'Journal entry added.';
+      }
+      case 'read_document': {
+        const doc = s.knowledge.find((k) => k.id === input.id);
+        if (!doc) return `Error: document ${input.id} not found.`;
+        return doc.content.slice(0, 30000);
       }
       case 'write_memory_section': {
         setState({ adlerNotes: { ...s.adlerNotes, [input.section as string]: input.content as string } });

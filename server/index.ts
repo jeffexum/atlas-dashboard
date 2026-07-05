@@ -429,6 +429,85 @@ app.post('/api/shopping/clear-bought', async (_req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// ── Knowledge documents (uploaded markdowns → distilled into assistant memory) ─
+
+app.post('/api/knowledge', async (req: Request, res: Response) => {
+  const { name, content } = req.body as { name: string; content: string };
+  if (!name?.trim() || !content?.trim()) { res.status(400).json({ error: 'name and content required' }); return; }
+  const s = getState();
+  const doc = {
+    id: `kd-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    name: name.trim().slice(0, 120),
+    content: content.slice(0, 200_000),
+    addedAt: Date.now(),
+  };
+
+  // Distill into a memory section so the assistant carries the essence in context
+  let summary = '';
+  try {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default;
+    const anthropicClient = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    const { MODELS } = await import('./models.js');
+    const resp = await anthropicClient.messages.create({
+      model: MODELS.standard,
+      max_tokens: 1024,
+      messages: [{
+        role: 'user',
+        content: `The user uploaded this document ("${doc.name}") so their personal assistant knows its contents. Distill everything the assistant should remember — facts about the user, preferences, ongoing projects, people, decisions, style notes. Write dense markdown, max ~300 words. Document:\n\n${doc.content.slice(0, 50_000)}`,
+      }],
+    });
+    const textBlock = resp.content.find((b) => b.type === 'text');
+    summary = textBlock?.type === 'text' ? textBlock.text.trim() : '';
+  } catch (err) {
+    console.warn('Knowledge distillation failed:', (err as Error).message);
+  }
+
+  const slug = doc.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || doc.id;
+  setState({
+    knowledge: [...s.knowledge, { ...doc, summary }],
+    ...(summary ? { adlerNotes: { ...s.adlerNotes, [`doc_${slug}`]: summary } } : {}),
+  });
+  await persistNow();
+  res.json({ ok: true, id: doc.id, distilled: !!summary });
+});
+
+app.get('/api/knowledge', (_req: Request, res: Response) => {
+  res.json(getState().knowledge.map((k) => ({ id: k.id, name: k.name, addedAt: k.addedAt, size: k.content.length, distilled: !!k.summary })));
+});
+
+app.delete('/api/knowledge/:id', async (req: Request, res: Response) => {
+  const s = getState();
+  const doc = s.knowledge.find((k) => k.id === req.params.id);
+  setState({ knowledge: s.knowledge.filter((k) => k.id !== req.params.id) });
+  if (doc) {
+    const slug = doc.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || doc.id;
+    const notes = { ...getState().adlerNotes };
+    delete notes[`doc_${slug}`];
+    setState({ adlerNotes: notes });
+  }
+  await persistNow();
+  res.json({ ok: true });
+});
+
+// ── Setup status (drives the onboarding wizard) ───────────────────────────────
+
+app.get('/api/setup/status', (_req: Request, res: Response) => {
+  const s = getState();
+  res.json({
+    user: USER.name,
+    assistant: USER.assistant,
+    timezone: USER.tz,
+    outlook: isAuthenticated(),
+    googleCalendar: isGoogleAuthenticated(),
+    gmail: isGmailConnected(),
+    oura: isOuraConfigured(),
+    telegram: !!process.env.TELEGRAM_BOT_TOKEN,
+    apiSecured: !!process.env.ATLAS_SECRET,
+    styleProfile: !!s.userProfile,
+    knowledgeDocs: s.knowledge.length,
+  });
+});
+
 // ── Gmail ─────────────────────────────────────────────────────────────────────
 
 app.get('/api/gmail/status', (_req: Request, res: Response) => {

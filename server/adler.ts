@@ -175,6 +175,9 @@ ${actionLines.join('\n') || '  none pending'}
 
 CURRENTLY READING: ${s.books.filter((b) => b.status === 'reading').map((b) => `${b.title} by ${b.author} (${b.pct}%)`).join(', ') || 'nothing'}
 
+KNOWLEDGE DOCUMENTS (uploaded reference material — use read_document with the exact id for full text; distilled summaries are in memory sections below):
+${s.knowledge.map((k) => `  [${k.id}] ${k.name}`).join('\n') || '  none uploaded'}
+
 YOUR PERSISTENT MEMORY:
 ${Object.keys(s.adlerNotes).length === 0
   ? '(empty — use write_memory_section to store things you learn about the user)'

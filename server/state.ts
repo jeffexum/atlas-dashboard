@@ -143,6 +143,16 @@ export interface ShoppingItem {
   addedAt?: number;
 }
 
+// Uploaded reference document (e.g. markdown exported from ChatGPT) — the
+// assistant sees a distilled summary in memory and can read the full text on demand
+export interface KnowledgeDoc {
+  id: string;
+  name: string;
+  content: string;
+  summary?: string;
+  addedAt: number;
+}
+
 export interface AdlerMessage {
   role: 'user' | 'adler';
   content: string;
@@ -163,6 +173,7 @@ export interface ServerState {
   calEvents: CalEvent[];
   health: HealthDay[];
   shopping: ShoppingItem[];
+  knowledge: KnowledgeDoc[];
   calNote: string;
   adlerMemory: AdlerMessage[];
   adlerNotes: Record<string, string>;
@@ -193,6 +204,7 @@ const seedState: ServerState = {
   calEvents: [],
   health: [],
   shopping: [],
+  knowledge: [],
   calNote: '',
   adlerMemory: [],
   adlerNotes: {},
@@ -263,6 +275,7 @@ const KEYS = {
   calEvents: 'atlas:calEvents',
   health: 'atlas:health',
   shopping: 'atlas:shopping',
+  knowledge: 'atlas:knowledge',
   calNote: 'atlas:calNote',
   adlerNotes: 'atlas:adlerNotes',
   adlerMemory: 'atlas:adlerMemory',
@@ -306,6 +319,7 @@ export async function persistNow(): Promise<Record<string, string>> {
     trySet(KEYS.calEvents, _state.calEvents),
     trySet(KEYS.health, _state.health),
     trySet(KEYS.shopping, _state.shopping),
+    trySet(KEYS.knowledge, _state.knowledge),
     trySet(KEYS.calNote, _state.calNote),
     trySet(KEYS.adlerNotes, _state.adlerNotes),
     trySet(KEYS.adlerMemory, _state.adlerMemory.slice(-20)),
@@ -331,7 +345,7 @@ export async function loadPersistedState(): Promise<void> {
 
     const [
       tasks, comms, drafts, proposedActions, habits, goals, books,
-      highlights, ideas, journalEntries, calEvents, health, shopping, calNote,
+      highlights, ideas, journalEntries, calEvents, health, shopping, knowledge, calNote,
       adlerNotes, adlerMemory, adlerLastContact,
       briefingText, briefingNudges, briefingGeneratedAt, userProfile,
     ] = await Promise.all([
@@ -348,6 +362,7 @@ export async function loadPersistedState(): Promise<void> {
       redisGet<ServerState['calEvents']>(KEYS.calEvents),
       redisGet<ServerState['health']>(KEYS.health),
       redisGet<ServerState['shopping']>(KEYS.shopping),
+      redisGet<ServerState['knowledge']>(KEYS.knowledge),
       redisGet<string>(KEYS.calNote),
       redisGet<ServerState['adlerNotes']>(KEYS.adlerNotes),
       redisGet<ServerState['adlerMemory']>(KEYS.adlerMemory),
@@ -372,6 +387,7 @@ export async function loadPersistedState(): Promise<void> {
       calEvents: Array.isArray(calEvents) ? calEvents : [],
       health: Array.isArray(health) ? health : [],
       shopping: Array.isArray(shopping) ? shopping : [],
+      knowledge: Array.isArray(knowledge) ? knowledge : [],
       calNote: typeof calNote === 'string' ? calNote : '',
       adlerNotes: (adlerNotes && typeof adlerNotes === 'object' && !Array.isArray(adlerNotes)) ? adlerNotes : {},
       adlerMemory: Array.isArray(adlerMemory) ? adlerMemory : [],
@@ -405,7 +421,7 @@ export async function migrateLegacyState(): Promise<void> {
 
 const ARRAY_FIELDS: (keyof ServerState)[] = [
   'tasks', 'comms', 'drafts', 'proposedActions', 'habits', 'goals',
-  'books', 'highlights', 'ideas', 'journalEntries', 'calEvents', 'health', 'shopping',
+  'books', 'highlights', 'ideas', 'journalEntries', 'calEvents', 'health', 'shopping', 'knowledge',
   'adlerMemory', 'briefingNudges',
 ];
 

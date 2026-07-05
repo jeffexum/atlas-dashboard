@@ -15,7 +15,8 @@ export type Screen =
   | 'reading'
   | 'ideas'
   | 'assistant'
-  | 'whiteboard';
+  | 'whiteboard'
+  | 'setup';
 
 export default function App() {
   const [screen, setScreen] = useState<Screen>('home');

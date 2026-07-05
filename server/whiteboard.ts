@@ -139,6 +139,12 @@ ${journalLines}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+PERSISTENT MEMORY (facts and preferences you've learned, including distilled uploads):
+${Object.entries(s.adlerNotes).map(([k, v]) => `[${k}]\n${v}`).join('\n\n') || '  (empty)'}
+
+KNOWLEDGE DOCUMENTS (read_document with the id for full text):
+${s.knowledge.map((k) => `  [${k.id}] ${k.name}`).join('\n') || '  none'}
+
 PENDING DRAFTS (use exact IDs with send_draft / discard_draft):
 ${s.drafts.filter((d) => d.status === 'ready').map((d) => `  [${d.id}] to ${d.to}, re: "${d.re}"${d.commId ? ' (in-thread reply)' : ''}\n${d.text}`).join('\n\n') || '  none'}
 

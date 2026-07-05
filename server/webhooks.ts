@@ -70,6 +70,12 @@ export async function ensureGraphSubscription(): Promise<void> {
   }
 }
 
+export async function getSubscriptionStatus(): Promise<{ active: boolean; expiration?: string }> {
+  const sub = await loadSub();
+  if (!sub) return { active: false };
+  return { active: new Date(sub.expiration).getTime() > Date.now(), expiration: sub.expiration };
+}
+
 // Debounced reaction to notifications — bursts of mail trigger one sync
 let _syncTimer: ReturnType<typeof setTimeout> | null = null;
 export function onMailNotification(): void {

@@ -499,9 +499,12 @@ app.delete('/api/knowledge/:id', async (req: Request, res: Response) => {
 
 // ── Setup status (drives the onboarding wizard) ───────────────────────────────
 
-app.get('/api/setup/status', (_req: Request, res: Response) => {
+app.get('/api/setup/status', async (_req: Request, res: Response) => {
   const s = getState();
+  const { getSubscriptionStatus } = await import('./webhooks.js');
+  const graphWebhook = await getSubscriptionStatus().catch(() => ({ active: false }));
   res.json({
+    graphWebhook: graphWebhook.active,
     user: USER.name,
     assistant: USER.assistant,
     timezone: USER.tz,

@@ -31,6 +31,16 @@ services:
         value: --dns-result-order=ipv4first --max-old-space-size=1024
       - key: UPSTASH_REDIS_REST_TOKEN
         sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: OURA_TOKEN
+        sync: false
+      - key: GOODREADS_USER_ID
+        value: "182820520"
+      - key: ATLAS_SECRET
+        sync: false
 
   - type: web
     name: atlas-dashboard
@@ -40,6 +50,8 @@ services:
     envVars:
       - key: VITE_API_URL
         value: https://atlas-api-fdlq.onrender.com
+      - key: VITE_ATLAS_SECRET
+        sync: false
     routes:
       - type: rewrite
         source: /*

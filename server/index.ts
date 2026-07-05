@@ -11,6 +11,7 @@ import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, load
 import { getGoogleAuthUrl, exchangeGoogleCode, syncGoogleCalendar, isGoogleAuthenticated, loadGoogleToken } from './google.js';
 import { syncOura, isOuraConfigured } from './oura.js';
 import { isGmailConnected, syncGmail, replyGmail, fetchGmailBody } from './gmail.js';
+import { syncGoodreads, isGoodreadsConfigured } from './goodreads.js';
 import { chat, extractAndApply, saveSession, getSessions } from './whiteboard.js';
 import { createCritical } from './models.js';
 import type { ChatMessage } from './whiteboard.js';
@@ -505,6 +506,7 @@ app.get('/api/setup/status', (_req: Request, res: Response) => {
     apiSecured: !!process.env.ATLAS_SECRET,
     styleProfile: !!s.userProfile,
     knowledgeDocs: s.knowledge.length,
+    goodreads: isGoodreadsConfigured(),
   });
 });
 
@@ -518,6 +520,19 @@ app.get('/api/gmail/sync', async (_req: Request, res: Response) => {
   if (!isGmailConnected()) { res.status(401).json({ error: 'Gmail not connected — re-connect Google', authUrl: '/api/google/auth' }); return; }
   try {
     await syncGmail();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+// ── Goodreads (Kindle reading via RSS shelves) ────────────────────────────────
+
+app.get('/api/goodreads/sync', async (_req: Request, res: Response) => {
+  if (!isGoodreadsConfigured()) { res.status(503).json({ error: 'GOODREADS_USER_ID not configured' }); return; }
+  try {
+    await syncGoodreads();
+    await persistNow();
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
@@ -544,6 +559,10 @@ app.post('/api/sync/all', async (_req: Request, res: Response) => {
     try { await syncOura(); results.oura = 'ok'; }
     catch (err) { results.oura = (err as Error).message; }
   } else results.oura = 'not configured';
+  if (isGoodreadsConfigured()) {
+    try { await syncGoodreads(); results.goodreads = 'ok'; }
+    catch (err) { results.goodreads = (err as Error).message; }
+  } else results.goodreads = 'not configured';
   await persistNow();
   res.json(results);
   generateBriefing().catch(() => {});
@@ -780,12 +799,14 @@ loadPersistedState()
     }
   })
   .then(() => { if (isOuraConfigured()) return syncOura().catch((e) => console.warn('Oura boot sync failed:', (e as Error).message)); })
+  .then(() => { if (isGoodreadsConfigured()) return syncGoodreads().catch((e) => console.warn('Goodreads boot sync failed:', (e as Error).message)); })
   .then(() => generateBriefing())
   .catch(() => {});
 
 // Oura re-sync every 2 hours (new sleep data lands once a day, but readiness/activity update)
 setInterval(() => {
   if (isOuraConfigured()) syncOura().catch(() => {});
+  if (isGoodreadsConfigured()) syncGoodreads().catch(() => {});
 }, 2 * 60 * 60_000);
 
 // ── Start ─────────────────────────────────────────────────────────────────────

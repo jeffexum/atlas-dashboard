@@ -3,7 +3,7 @@
 import 'dotenv/config';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import { getState, setState, persistNow, addHabit, deleteHabit, toggleHabitToday, recomputeAllHabits, dismissComm, snoozeComm } from './state.js';
+import { getState, setState, persistNow, addHabit, deleteHabit, toggleHabitToday, recomputeAllHabits, dismissComm, snoozeComm, addShoppingItem, toggleShoppingItem, deleteShoppingItem, clearBoughtShoppingItems } from './state.js';
 import { runAgent } from './agents.js';
 import { adlerProactiveCheck, generateBriefing, runPartnerAdler } from './adler.js';
 import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, replyToEmail, fetchEmailBody } from './outlook.js';
@@ -374,6 +374,35 @@ app.get('/api/google/sync', async (_req: Request, res: Response) => {
 
 app.get('/api/google/status', (_req: Request, res: Response) => {
   res.json({ authenticated: isGoogleAuthenticated() });
+});
+
+// ── Shopping list ─────────────────────────────────────────────────────────────
+
+app.post('/api/shopping', async (req: Request, res: Response) => {
+  const { name, category, addedBy } = req.body as { name: string; category?: string; addedBy?: string };
+  if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
+  const cat = (['Groceries', 'House', 'Misc'].includes(category || '') ? category : 'Misc') as 'Groceries' | 'House' | 'Misc';
+  const item = addShoppingItem(name.trim(), cat, addedBy || 'Jeff');
+  await persistNow();
+  res.json({ ok: true, item });
+});
+
+app.post('/api/shopping/:id/toggle', async (req: Request, res: Response) => {
+  toggleShoppingItem(req.params.id as string);
+  await persistNow();
+  res.json({ ok: true });
+});
+
+app.delete('/api/shopping/:id', async (req: Request, res: Response) => {
+  deleteShoppingItem(req.params.id as string);
+  await persistNow();
+  res.json({ ok: true });
+});
+
+app.post('/api/shopping/clear-bought', async (_req: Request, res: Response) => {
+  clearBoughtShoppingItems();
+  await persistNow();
+  res.json({ ok: true });
 });
 
 // ── Sync everything ───────────────────────────────────────────────────────────

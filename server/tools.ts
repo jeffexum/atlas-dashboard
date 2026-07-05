@@ -116,6 +116,22 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
     description: 'Create a task from an inbox message',
     input_schema: { type: 'object' as const, properties: { commId: { type: 'string' } }, required: ['commId'] },
   },
+  // ── Shopping list ──
+  {
+    name: 'add_shopping_item',
+    description: 'Add an item to the shopping list. Category: Groceries (food), House (household supplies/repairs), or Misc.',
+    input_schema: { type: 'object' as const, properties: { name: { type: 'string' }, category: { type: 'string', enum: ['Groceries', 'House', 'Misc'] } }, required: ['name', 'category'] },
+  },
+  {
+    name: 'check_shopping_item',
+    description: 'Mark a shopping item as bought (toggles — calling again un-checks it)',
+    input_schema: { type: 'object' as const, properties: { id: { type: 'string' } }, required: ['id'] },
+  },
+  {
+    name: 'remove_shopping_item',
+    description: 'Remove an item from the shopping list entirely',
+    input_schema: { type: 'object' as const, properties: { id: { type: 'string' } }, required: ['id'] },
+  },
   // ── Sync / learning ──
   {
     name: 'sync_data',
@@ -272,6 +288,18 @@ export async function executeTool(name: string, input: Record<string, unknown>):
       case 'add_todo_from_comm':
         state.addTodoFromComm(input.commId as string);
         return 'Task created from email.';
+      case 'add_shopping_item': {
+        const item = state.addShoppingItem(input.name as string, input.category as state.ShoppingCategory, 'Adler');
+        await persistNow();
+        return `"${item.name}" added to shopping list (${item.category}).`;
+      }
+      case 'check_shopping_item':
+        state.toggleShoppingItem(input.id as string);
+        return 'Shopping item toggled.';
+      case 'remove_shopping_item':
+        state.deleteShoppingItem(input.id as string);
+        await persistNow();
+        return 'Shopping item removed.';
       case 'sync_data': {
         const parts: string[] = [];
         if (isAuthenticated()) {

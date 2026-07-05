@@ -7,6 +7,7 @@ export type Screen =
   | 'inbox'
   | 'calendar'
   | 'todos'
+  | 'shopping'
   | 'goals'
   | 'habits'
   | 'health'

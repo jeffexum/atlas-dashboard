@@ -156,6 +156,9 @@ ${calLines.join('\n') || '  nothing scheduled'}
 FREE TIME SLOTS (≥1h, 8am–6pm, both calendars considered):
 ${gapLines.join('\n') || '  none in the next 3 days'}
 
+SHOPPING LIST (use exact IDs for check_shopping_item / remove_shopping_item):
+${s.shopping.filter((i) => !i.done).map((i) => `  [${i.id}] ${i.category}: ${i.name}${i.addedBy && i.addedBy !== 'Jeff' ? ` (added by ${i.addedBy})` : ''}`).join('\n') || '  empty'}
+
 HEALTH — Oura Ring, last 3 days (most recent last):
 ${s.health.slice(-3).map((h) => `  ${h.date}: sleep ${h.sleepHours ?? '?'}h (score ${h.sleepScore ?? '?'}, deep ${h.deepHours ?? '?'}h, REM ${h.remHours ?? '?'}h), readiness ${h.readinessScore ?? '?'}, HRV ${h.hrv ?? '?'}, resting HR ${h.restingHR ?? '?'}, steps ${h.steps ?? '?'}`).join('\n') || '  no data synced'}
 

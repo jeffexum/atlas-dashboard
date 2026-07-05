@@ -95,6 +95,17 @@ export interface JournalEntry {
   text: string;
 }
 
+export type ShoppingCategory = 'Groceries' | 'House' | 'Misc';
+
+export interface ShoppingItem {
+  id: string;
+  name: string;
+  category: ShoppingCategory;
+  done: boolean;
+  addedBy?: string;
+  addedAt?: number;
+}
+
 // One day of Oura Ring data
 export interface HealthDay {
   date: string;
@@ -143,6 +154,7 @@ interface StoreState {
   journalEntries: JournalEntry[];
   calEvents: CalEvent[];
   health: HealthDay[];
+  shopping: ShoppingItem[];
   calNote: string;
   briefingText: string;
   briefingNudges: string[];
@@ -192,6 +204,7 @@ export const useStore = create<StoreState>((set) => ({
   journalEntries: [],
   calEvents: [],
   health: [],
+  shopping: [],
   calNote: '',
   briefingText: '',
   briefingNudges: [],
@@ -554,6 +567,33 @@ export async function deleteHabit(id: string) {
   await fetch(`${API}/api/habits/${id}`, { method: 'DELETE' }).catch(() => {});
 }
 
+export async function addShoppingItem(name: string, category: string) {
+  const API = import.meta.env.VITE_API_URL || '';
+  await fetch(`${API}/api/shopping`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, category }),
+  }).catch(() => {});
+}
+
+export async function toggleShoppingItem(id: string) {
+  useStore.setState((s) => ({ shopping: s.shopping.map((i) => i.id === id ? { ...i, done: !i.done } : i) }));
+  const API = import.meta.env.VITE_API_URL || '';
+  await fetch(`${API}/api/shopping/${id}/toggle`, { method: 'POST' }).catch(() => {});
+}
+
+export async function deleteShoppingItem(id: string) {
+  useStore.setState((s) => ({ shopping: s.shopping.filter((i) => i.id !== id) }));
+  const API = import.meta.env.VITE_API_URL || '';
+  await fetch(`${API}/api/shopping/${id}`, { method: 'DELETE' }).catch(() => {});
+}
+
+export async function clearBoughtShopping() {
+  useStore.setState((s) => ({ shopping: s.shopping.filter((i) => !i.done) }));
+  const API = import.meta.env.VITE_API_URL || '';
+  await fetch(`${API}/api/shopping/clear-bought`, { method: 'POST' }).catch(() => {});
+}
+
 export async function syncStateToServer() {
   const state = useStore.getState()
   await fetch(`${API_URL}/api/state`, {
@@ -579,6 +619,7 @@ function sanitizeServerState(s: Record<string, unknown>) {
     journalEntries: arr(s.journalEntries),
     calEvents: arr(s.calEvents),
     health: arr(s.health),
+    shopping: arr(s.shopping),
     briefingNudges: arr(s.briefingNudges),
   };
 }

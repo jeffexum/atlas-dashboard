@@ -132,6 +132,17 @@ export interface HealthDay {
   activeCalories?: number;
 }
 
+export type ShoppingCategory = 'Groceries' | 'House' | 'Misc';
+
+export interface ShoppingItem {
+  id: string;
+  name: string;
+  category: ShoppingCategory;
+  done: boolean;
+  addedBy?: string; // 'Jeff' | 'Adler' | 'Lacy' — who put it on the list
+  addedAt?: number;
+}
+
 export interface AdlerMessage {
   role: 'user' | 'adler';
   content: string;
@@ -151,6 +162,7 @@ export interface ServerState {
   journalEntries: JournalEntry[];
   calEvents: CalEvent[];
   health: HealthDay[];
+  shopping: ShoppingItem[];
   calNote: string;
   adlerMemory: AdlerMessage[];
   adlerNotes: Record<string, string>;
@@ -180,6 +192,7 @@ const seedState: ServerState = {
   journalEntries: [],
   calEvents: [],
   health: [],
+  shopping: [],
   calNote: '',
   adlerMemory: [],
   adlerNotes: {},
@@ -249,6 +262,7 @@ const KEYS = {
   journalEntries: 'atlas:journalEntries',
   calEvents: 'atlas:calEvents',
   health: 'atlas:health',
+  shopping: 'atlas:shopping',
   calNote: 'atlas:calNote',
   adlerNotes: 'atlas:adlerNotes',
   adlerMemory: 'atlas:adlerMemory',
@@ -291,6 +305,7 @@ export async function persistNow(): Promise<Record<string, string>> {
     trySet(KEYS.journalEntries, _state.journalEntries),
     trySet(KEYS.calEvents, _state.calEvents),
     trySet(KEYS.health, _state.health),
+    trySet(KEYS.shopping, _state.shopping),
     trySet(KEYS.calNote, _state.calNote),
     trySet(KEYS.adlerNotes, _state.adlerNotes),
     trySet(KEYS.adlerMemory, _state.adlerMemory.slice(-20)),
@@ -316,7 +331,7 @@ export async function loadPersistedState(): Promise<void> {
 
     const [
       tasks, comms, drafts, proposedActions, habits, goals, books,
-      highlights, ideas, journalEntries, calEvents, health, calNote,
+      highlights, ideas, journalEntries, calEvents, health, shopping, calNote,
       adlerNotes, adlerMemory, adlerLastContact,
       briefingText, briefingNudges, briefingGeneratedAt, userProfile,
     ] = await Promise.all([
@@ -332,6 +347,7 @@ export async function loadPersistedState(): Promise<void> {
       redisGet<ServerState['journalEntries']>(KEYS.journalEntries),
       redisGet<ServerState['calEvents']>(KEYS.calEvents),
       redisGet<ServerState['health']>(KEYS.health),
+      redisGet<ServerState['shopping']>(KEYS.shopping),
       redisGet<string>(KEYS.calNote),
       redisGet<ServerState['adlerNotes']>(KEYS.adlerNotes),
       redisGet<ServerState['adlerMemory']>(KEYS.adlerMemory),
@@ -355,6 +371,7 @@ export async function loadPersistedState(): Promise<void> {
       journalEntries: Array.isArray(journalEntries) ? journalEntries : [],
       calEvents: Array.isArray(calEvents) ? calEvents : [],
       health: Array.isArray(health) ? health : [],
+      shopping: Array.isArray(shopping) ? shopping : [],
       calNote: typeof calNote === 'string' ? calNote : '',
       adlerNotes: (adlerNotes && typeof adlerNotes === 'object' && !Array.isArray(adlerNotes)) ? adlerNotes : {},
       adlerMemory: Array.isArray(adlerMemory) ? adlerMemory : [],
@@ -388,7 +405,7 @@ export async function migrateLegacyState(): Promise<void> {
 
 const ARRAY_FIELDS: (keyof ServerState)[] = [
   'tasks', 'comms', 'drafts', 'proposedActions', 'habits', 'goals',
-  'books', 'highlights', 'ideas', 'journalEntries', 'calEvents', 'health',
+  'books', 'highlights', 'ideas', 'journalEntries', 'calEvents', 'health', 'shopping',
   'adlerMemory', 'briefingNudges',
 ];
 
@@ -644,4 +661,24 @@ export function startReading(id: string): void {
       b.id === id ? { ...b, status: 'reading' as const, chapter: 'ch. 1' } : b
     ),
   });
+}
+
+// ── Shopping list ─────────────────────────────────────────────────────────────
+
+export function addShoppingItem(name: string, category: ShoppingCategory, addedBy = 'Jeff'): ShoppingItem {
+  const item: ShoppingItem = { id: `sh-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, name, category, done: false, addedBy, addedAt: Date.now() };
+  setState({ shopping: [..._state.shopping, item] });
+  return item;
+}
+
+export function toggleShoppingItem(id: string): void {
+  setState({ shopping: _state.shopping.map((i) => i.id === id ? { ...i, done: !i.done } : i) });
+}
+
+export function deleteShoppingItem(id: string): void {
+  setState({ shopping: _state.shopping.filter((i) => i.id !== id) });
+}
+
+export function clearBoughtShoppingItems(): void {
+  setState({ shopping: _state.shopping.filter((i) => !i.done) });
 }

@@ -256,6 +256,11 @@ export async function createOutlookEvent(opts: {
   return created?.id || '';
 }
 
+// Delete an event from the user's Outlook calendar by Graph event id.
+export async function deleteOutlookEvent(eventId: string): Promise<void> {
+  await graphRequest('DELETE', `/me/events/${eventId}`);
+}
+
 export async function graphGet(path: string, extraHeaders?: Record<string, string>): Promise<unknown> {
   let token = await getAccessToken();
   let res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {

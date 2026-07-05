@@ -7,9 +7,9 @@ import { getState, setState, persistNow } from './state.js';
 import * as state from './state.js';
 import {
   sendEmail, replyToEmail, isAuthenticated, syncMail, syncCalendar,
-  learnUserProfile, fetchEmailBody, createOutlookEvent,
+  learnUserProfile, fetchEmailBody, createOutlookEvent, deleteOutlookEvent,
 } from './outlook.js';
-import { syncGoogleCalendar, isGoogleAuthenticated, createGoogleEvent } from './google.js';
+import { syncGoogleCalendar, isGoogleAuthenticated, createGoogleEvent, deleteGoogleEvent } from './google.js';
 import { USER } from './config.js';
 import { isGmailConnected, syncGmail, replyGmail, fetchGmailBody } from './gmail.js';
 import { syncOura, isOuraConfigured } from './oura.js';
@@ -68,6 +68,11 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
     name: 'add_calendar_event',
     description: 'Add an event to the Atlas dashboard calendar ONLY (does not write to the real Outlook/Google calendar). Use book_calendar_event to put something on the user\'s actual calendar.',
     input_schema: { type: 'object' as const, properties: { title: { type: 'string' }, start: { type: 'number', description: 'Start hour as decimal (e.g. 9.5 = 9:30am)' }, duration: { type: 'number', description: 'Duration in hours' }, category: { type: 'string' }, date: { type: 'number', description: 'Day of month' } }, required: ['title', 'start', 'duration', 'category', 'date'] },
+  },
+  {
+    name: 'delete_calendar_event',
+    description: "Delete a REAL calendar event from the user's Outlook or Gmail calendar. Use the event id from the calendar context (Outlook ids are long alphanumeric; Gmail ids start with 'gcal-'). Confirm with the user first unless they explicitly asked to cancel/remove it.",
+    input_schema: { type: 'object' as const, properties: { eventId: { type: 'string' } }, required: ['eventId'] },
   },
   {
     name: 'book_calendar_event',
@@ -285,6 +290,21 @@ export async function executeTool(name: string, input: Record<string, unknown>):
           return `Failed to book event: ${msg}`;
         }
         return `Booked "${input.title}" on the ${calendar === 'work' ? 'work (Outlook)' : 'personal (Gmail)'} calendar for ${dateStr} at ${toClock(startHour).slice(11, 16)} (${durationMin} min).`;
+      }
+      case 'delete_calendar_event': {
+        const eventId = input.eventId as string;
+        try {
+          if (eventId.startsWith('gcal-')) {
+            await deleteGoogleEvent(eventId);
+            await syncGoogleCalendar();
+          } else {
+            await deleteOutlookEvent(eventId);
+            await syncCalendar();
+          }
+        } catch (err) {
+          return `Failed to delete event: ${(err as Error).message}`;
+        }
+        return 'Calendar event deleted.';
       }
       case 'read_email': {
         const commId = input.commId as string;

@@ -188,6 +188,20 @@ export async function createGoogleEvent(opts: {
   return created?.id || '';
 }
 
+// Delete an event from the user's primary Google calendar. Accepts the raw
+// Google id or the dashboard-prefixed "gcal-<id>" form.
+export async function deleteGoogleEvent(eventId: string): Promise<void> {
+  const id = eventId.startsWith('gcal-') ? eventId.slice(5) : eventId;
+  const token = await getAccessToken();
+  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok && res.status !== 404 && res.status !== 410) {
+    throw new Error(`Google delete event ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  }
+}
+
 // ── Calendar sync ─────────────────────────────────────────────────────────────
 
 interface GCalEvent {

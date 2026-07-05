@@ -122,13 +122,19 @@ function DayBuilderCard() {
   }
 
   const todayStr = new Date().toLocaleDateString('en-CA');
-  const planIsToday = dayPlan?.date === todayStr;
+  // Show today's plan or an upcoming one (built the evening before)
+  const planIsCurrent = !!dayPlan && dayPlan.date >= todayStr;
+  const planLabel = dayPlan?.date === todayStr ? 'today' :
+    dayPlan ? new Date(`${dayPlan.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
 
   return (
     <div style={{ ...cardBase, padding: '20px', marginBottom: '12px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
         <span style={{ fontSize: 13, fontWeight: 600 }}>🗓 Day Builder</span>
-        {dayPlan && planIsToday && (
+        {dayPlan && planIsCurrent && planLabel !== 'today' && (
+          <span style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: 'var(--faint)' }}>{planLabel}</span>
+        )}
+        {dayPlan && planIsCurrent && (
           <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", padding: '2px 8px', borderRadius: 10,
             background: dayPlan.status === 'confirmed' ? 'var(--accentbg)' : 'var(--bg)',
             color: dayPlan.status === 'confirmed' ? 'var(--accent)' : 'var(--mut)',
@@ -137,14 +143,14 @@ function DayBuilderCard() {
           </span>
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
-          {(!dayPlan || !planIsToday) && (
+          {(!dayPlan || !planIsCurrent) && (
             <button onClick={() => ask('Build my day: look at my calendar, due to-dos, inbox, habits, and health scores, and propose a full day plan with set_day_plan — include an email batch block with the specific emails needing replies, deep work on due tasks, exercise/outside time, and creative/personal development time.')}
               disabled={busy}
               style={{ padding: '5px 14px', fontSize: 12, fontWeight: 600, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 14, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit', opacity: busy ? 0.6 : 1 }}>
               {busy ? 'Planning…' : 'Build my day'}
             </button>
           )}
-          {dayPlan && planIsToday && dayPlan.status === 'draft' && (
+          {dayPlan && planIsCurrent && dayPlan.status === 'draft' && (
             <button onClick={() => ask('I confirm the day plan — lock it in with confirm_day_plan, book the blocks, and draft the emails in the email block.')}
               disabled={busy}
               style={{ padding: '5px 14px', fontSize: 12, fontWeight: 600, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 14, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit', opacity: busy ? 0.6 : 1 }}>
@@ -154,7 +160,7 @@ function DayBuilderCard() {
         </div>
       </div>
 
-      {dayPlan && planIsToday ? (
+      {dayPlan && planIsCurrent ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {dayPlan.blocks.map((b) => (
             <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 8px', borderRadius: 5, background: 'var(--bg)' }}>
@@ -185,7 +191,7 @@ function DayBuilderCard() {
         </div>
       )}
 
-      {dayPlan && planIsToday && (
+      {dayPlan && planIsCurrent && (
         <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
           <input
             value={chatInput}

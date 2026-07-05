@@ -22,6 +22,26 @@ const FRONTEND_URL = process.env.FRONTEND_URL || '*';
 app.use(cors({ origin: FRONTEND_URL }));
 app.use(express.json({ limit: '2mb' }));
 
+// ── API auth ──────────────────────────────────────────────────────────────────
+// Set ATLAS_SECRET to require a bearer token on all API routes. Disabled when
+// unset (backwards compatible). Exemptions: OAuth redirects/callbacks (browser
+// navigations can't send headers) and the Telegram webhook (validated by path).
+const ATLAS_SECRET = process.env.ATLAS_SECRET;
+const AUTH_EXEMPT = new Set([
+  '/api/outlook/auth', '/api/outlook/callback',
+  '/api/google/auth', '/api/google/callback',
+]);
+
+app.use((req: Request, res: Response, next) => {
+  if (!ATLAS_SECRET) { next(); return; }
+  if (req.path.startsWith('/webhook')) { next(); return; }
+  if (AUTH_EXEMPT.has(req.path)) { next(); return; }
+  const header = req.headers.authorization?.replace(/^Bearer\s+/i, '');
+  const key = header || (req.query.key as string | undefined); // ?key= for EventSource
+  if (key === ATLAS_SECRET) { next(); return; }
+  res.status(401).json({ error: 'unauthorized' });
+});
+
 // ── SSE clients ──────────────────────────────────────────────────────────────
 
 const sseClients = new Set<Response>();

@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { sseUrl } from '../auth';
 
 export interface Task {
   id: string;
@@ -634,7 +635,7 @@ export async function initFromServer() {
 }
 
 export function subscribeToServerEvents() {
-  const es = new EventSource(`${API_URL}/api/events`)
+  const es = new EventSource(sseUrl(`${API_URL}/api/events`))
   es.onmessage = (e) => {
     try {
       const serverState = JSON.parse(e.data)

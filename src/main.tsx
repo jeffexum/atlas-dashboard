@@ -1,3 +1,4 @@
+import './auth' // must load first — wraps fetch with the instance secret
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'

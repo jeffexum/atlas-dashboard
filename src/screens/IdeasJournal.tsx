@@ -233,7 +233,7 @@ function IdeasTab() {
         >
           <p style={{ margin: '0 0 12px 0' }}>
             Today felt productive despite the morning chaos. The Q2 review prep is hanging over me,
-            but the focus block Scout added actually helped — got 60% of the slides done before
+            but the focus block my assistant added actually helped — got 60% of the slides done before
             lunch. Had a good conversation with Sarah about the server issues; feels resolved now.
           </p>
           <p style={{ margin: 0 }}>
@@ -252,7 +252,7 @@ function IdeasTab() {
             color: 'var(--ink2)',
           }}
         >
-          Scout: Based on today's patterns, consider blocking 8–9am tomorrow for email triage
+          Adler: Based on today's patterns, consider blocking 8–9am tomorrow for email triage
           before your calendar fills up.
         </div>
       </div>
@@ -390,7 +390,7 @@ function JournalTab() {
             color: 'var(--ink2)',
           }}
         >
-          Scout: Your last 4 Sunday entries show a consistent reflection pattern — you might enjoy
+          Adler: Your last 4 Sunday entries show a consistent reflection pattern — you might enjoy
           turning this into a structured weekly template.
         </div>
       </div>

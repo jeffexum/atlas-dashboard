@@ -173,6 +173,7 @@ interface StoreState {
   briefingText: string;
   briefingNudges: string[];
   userProfile: string;
+  assistantName: string;
 
   acceptAction: (id: string) => void;
   dismissAction: (id: string) => void;
@@ -224,6 +225,7 @@ export const useStore = create<StoreState>((set) => ({
   briefingText: '',
   briefingNudges: [],
   userProfile: '',
+  assistantName: 'Adler',
 
   acceptAction: (id) => {
     const action = useStore.getState().proposedActions.find((a) => a.id === id);
@@ -671,6 +673,14 @@ export async function initFromServer() {
     if (!res.ok) return
     const serverState = await res.json()
     useStore.setState(sanitizeServerState(serverState))
+  } catch {}
+  try {
+    const res = await fetch(`${API_URL}/api/setup/status`)
+    if (!res.ok) return
+    const status = await res.json()
+    if (typeof status.assistant === 'string' && status.assistant.trim()) {
+      useStore.setState({ assistantName: status.assistant.trim() })
+    }
   } catch {}
 }
 

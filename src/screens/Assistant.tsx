@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import type { Screen } from '../App';
-import { askAgent } from '../store/useStore';
+import { askAgent, useStore } from '../store/useStore';
 
 type ActionKind = 'nav' | 'action' | 'dismiss';
 
@@ -43,6 +43,7 @@ function actionStyle(kind: ActionKind): React.CSSProperties {
 }
 
 export default function Assistant({ setScreen }: Props) {
+  const assistantName = useStore((s) => s.assistantName);
   const [messages, setMessages] = useState<Message[]>(SEED);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -66,7 +67,7 @@ export default function Assistant({ setScreen }: Props) {
       const result = await askAgent(text);
       const agentName = result.agent
         ? result.agent.charAt(0).toUpperCase() + result.agent.slice(1)
-        : 'Scout';
+        : assistantName;
       const agentMsg: Message = {
         id: nextId.current++,
         role: 'agent',
@@ -80,7 +81,7 @@ export default function Assistant({ setScreen }: Props) {
         id: nextId.current++,
         role: 'agent',
         text: "Got it! I'll take care of that.",
-        agentName: 'Scout',
+        agentName: assistantName,
         agentKey: 'scout',
       };
       setMessages((prev) => [...prev, agentMsg]);
@@ -134,7 +135,7 @@ export default function Assistant({ setScreen }: Props) {
                     flexShrink: 0,
                   }}
                 />
-                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>{msg.agentName || 'Scout'}</span>
+                <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--ink)' }}>{msg.agentName || assistantName}</span>
                 <span
                   style={{
                     fontSize: 9, fontFamily: "'JetBrains Mono', monospace",
@@ -232,7 +233,7 @@ export default function Assistant({ setScreen }: Props) {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder="Ask Scout anything..."
+          placeholder={`Ask ${assistantName} anything...`}
           style={{
             flex: 1,
             border: '1px solid var(--line)',

@@ -9,6 +9,7 @@ interface Props {
 }
 
 export default function AskBar({ setScreen }: Props) {
+  const assistantName = useStore((s) => s.assistantName);
   const [value, setValue] = useState('');
   const [response, setResponse] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -153,7 +154,7 @@ export default function AskBar({ setScreen }: Props) {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(value); }}
-          placeholder="Ask Scout anything…"
+          placeholder={`Ask ${assistantName} anything…`}
           style={{
             flex: 1,
             border: 'none',

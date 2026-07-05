@@ -29,6 +29,7 @@ interface Props {
 
 export default function Goals({ setScreen: _setScreen }: Props) {
   const goals = useStore((s) => s.goals);
+  const assistantName = useStore((s) => s.assistantName);
   const updateGoalProgress = useStore((s) => s.updateGoalProgress);
   const addGoal = useStore((s) => s.addGoal);
   const editGoal = useStore((s) => s.editGoal);
@@ -398,7 +399,7 @@ export default function Goals({ setScreen: _setScreen }: Props) {
                     color: scoutNotes[goal.id] === 'on track' ? 'var(--accent)' : 'var(--p1)',
                   }}
                 >
-                  Scout: {scoutNotes[goal.id]}
+                  {assistantName}: {scoutNotes[goal.id]}
                 </div>
               )}
             </div>

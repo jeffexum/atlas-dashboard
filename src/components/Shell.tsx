@@ -92,6 +92,7 @@ export default function Shell({ screen, setScreen }: Props) {
     }
   }
   const comms = useStore((s) => s.comms);
+  const assistantName = useStore((s) => s.assistantName);
   const tasks = useStore((s) => s.tasks);
 
   const openComms = comms.filter((c) => c.status === 'open').length;
@@ -117,7 +118,7 @@ export default function Shell({ screen, setScreen }: Props) {
     finances: { title: 'Finances', sub: now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) },
     reading: { title: 'Reading', sub: '2 in progress' },
     ideas: { title: 'Ideas & Journal', sub: 'Your thinking space' },
-    assistant: { title: 'Scout', sub: 'AI assistant · ready' },
+    assistant: { title: assistantName, sub: 'AI assistant · ready' },
     whiteboard: { title: 'Whiteboard', sub: 'Think with your agents' },
   };
 
@@ -251,7 +252,7 @@ export default function Shell({ screen, setScreen }: Props) {
             >
               <span style={{ width: 14, height: 14, borderRadius: '50%', background: 'var(--card)' }} />
             </span>
-            Scout
+            {assistantName}
             <span
               style={{
                 marginLeft: 'auto',
@@ -360,7 +361,7 @@ export default function Shell({ screen, setScreen }: Props) {
                 boxShadow: '0 0 0 2px oklch(0.85 0.06 162)',
               }}
             />
-            Scout
+            {assistantName}
             <span style={{ color: 'var(--mut)', fontWeight: 400 }}>·</span>
             <span style={{ color: 'var(--accent)', fontSize: 11, fontFamily: "'JetBrains Mono', monospace" }}>ready</span>
           </button>

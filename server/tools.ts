@@ -334,6 +334,40 @@ export async function executeTool(name: string, input: Record<string, unknown>):
           bookTo: (b.bookTo as string) || 'none',
         })) as NonNullable<ReturnType<typeof getState>['dayPlan']>['blocks'];
         blocks.sort((a, b) => a.start - b.start);
+
+        // Deterministic conflict check — the LLM is never the source of truth for
+        // overlaps. Reject the plan with specifics so the model must revise.
+        const [py, pm, pd] = date.split('-').map(Number);
+        const existing = getState().calEvents.filter((e) =>
+          e.date === pd
+          && (e.month === undefined || e.month === pm)
+          && (e.year === undefined || e.year === py)
+          && !e.title.startsWith('📅') // all-day banners aren't time conflicts
+        );
+        const mirrors = (blockTitle: string, evTitle: string) => {
+          const a = blockTitle.toLowerCase(); const b = evTitle.toLowerCase();
+          return a.includes(b) || b.includes(a);
+        };
+        const conflicts: string[] = [];
+        const fmt = (h: number) => `${Math.floor(h)}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`;
+        for (const b of blocks) {
+          for (const e of existing) {
+            const overlap = b.start < e.start + e.duration && b.start + b.duration > e.start;
+            if (overlap && !mirrors(b.title, e.title)) {
+              conflicts.push(`block "${b.title}" (${fmt(b.start)}–${fmt(b.start + b.duration)}) overlaps calendar event "${e.title}" (${fmt(e.start)}–${fmt(e.start + e.duration)}, ${e.source || 'work'})`);
+            }
+          }
+        }
+        for (let i = 0; i < blocks.length - 1; i++) {
+          const a = blocks[i]!; const b = blocks[i + 1]!;
+          if (b.start < a.start + a.duration) {
+            conflicts.push(`block "${a.title}" (ends ${fmt(a.start + a.duration)}) overlaps block "${b.title}" (starts ${fmt(b.start)})`);
+          }
+        }
+        if (conflicts.length) {
+          return `REJECTED — the plan has ${conflicts.length} conflict(s), fix the times and call set_day_plan again:\n- ${conflicts.join('\n- ')}`;
+        }
+
         setState({ dayPlan: { date, status: 'draft', blocks, updatedAt: Date.now() } });
         await persistNow();
         const emails = blocks.filter((b) => b.kind === 'email').flatMap((b) => b.commIds || []).length;

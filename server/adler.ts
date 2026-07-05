@@ -142,11 +142,16 @@ function buildContext(): string {
   );
 
   const today = parseInt(now.toLocaleDateString('en-US', { day: 'numeric', timeZone: TZ }), 10);
+  const fmtClock = (h: number) => {
+    const hr = Math.floor(h);
+    const mn = Math.round((h - hr) * 60);
+    return `${hr}:${String(mn).padStart(2, '0')}`;
+  };
   const calLines = s.calEvents
     .filter((e) => e.date >= today && e.date <= today + 7)
     .sort((a, b) => a.date - b.date || a.start - b.start)
-    .slice(0, 25)
-    .map((e) => `  ${e.date}th ${Math.floor(e.start)}:${e.start % 1 ? '30' : '00'} — ${e.title} [${e.source === 'personal' ? 'Personal/Gmail' : 'Work/Outlook'}]`);
+    .slice(0, 40)
+    .map((e) => `  ${e.date}th ${fmtClock(e.start)}–${fmtClock(e.start + e.duration)} — ${e.title} [${e.source === 'personal' ? 'Personal/Gmail' : 'Work/Outlook'}]`);
 
   const goalLines = s.goals.map((g) =>
     `  [${g.id}] ${g.name}: ${g.pct}% — ${g.current} / ${g.target} (due ${g.deadlineShort})`

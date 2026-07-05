@@ -16,6 +16,7 @@ export const MODELS = {
 // never breaks a draft. Also covers orgs where Fable is unavailable (e.g.
 // zero-data-retention config returns 400) by falling back on request errors.
 import type Anthropic from '@anthropic-ai/sdk';
+import { trackModelCall } from './audit.js';
 
 export async function createCritical(
   client: Anthropic,
@@ -23,6 +24,7 @@ export async function createCritical(
 ): Promise<Anthropic.Message> {
   try {
     const response = await client.messages.create({ ...params, model: MODELS.critical });
+    trackModelCall('draft-critical', response.model, response.usage).catch(() => {});
     if (response.stop_reason !== 'refusal') {
       console.log(`[models] critical call served by ${response.model}`);
       return response;
@@ -31,5 +33,7 @@ export async function createCritical(
   } catch (err) {
     console.warn(`[models] ${MODELS.critical} error (${(err as Error).message}) — falling back to ${MODELS.standard}`);
   }
-  return client.messages.create({ ...params, model: MODELS.standard });
+  const fallback = await client.messages.create({ ...params, model: MODELS.standard });
+  trackModelCall('draft-critical-fallback', fallback.model, fallback.usage).catch(() => {});
+  return fallback;
 }

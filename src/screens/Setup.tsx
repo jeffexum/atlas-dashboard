@@ -16,6 +16,8 @@ interface SetupStatus {
 }
 
 interface KnowledgeItem { id: string; name: string; addedAt: number; size: number; distilled: boolean }
+interface CostSummary { todayUsd: number; alert: boolean; days: { date: string; usd: number; calls: number }[]; byPurposeToday: { purpose: string; usd: number; calls: number }[] }
+interface AuditRow { ts: number; actor: string; action: string; objectRef?: string; detail?: string }
 
 function Dot({ ok }: { ok: boolean }) {
   return (
@@ -52,15 +54,19 @@ export default function Setup() {
   const [uploading, setUploading] = useState(false);
   const [learning, setLearning] = useState(false);
   const [botHelp, setBotHelp] = useState(false);
+  const [costs, setCosts] = useState<CostSummary | null>(null);
+  const [auditRows, setAuditRows] = useState<AuditRow[]>([]);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function refresh() {
     try {
-      const [st, kn] = await Promise.all([
+      const [st, kn, co, au] = await Promise.all([
         fetch(`${API}/api/setup/status`).then((r) => r.json()),
         fetch(`${API}/api/knowledge`).then((r) => r.json()),
+        fetch(`${API}/api/admin/costs`).then((r) => r.json()).catch(() => null),
+        fetch(`${API}/api/admin/audit?limit=25`).then((r) => r.json()).catch(() => []),
       ]);
-      setStatus(st); setDocs(kn);
+      setStatus(st); setDocs(kn); setCosts(co); setAuditRows(Array.isArray(au) ? au : []);
     } catch { /* server unreachable */ }
   }
   useEffect(() => { refresh(); }, []);
@@ -160,6 +166,50 @@ export default function Setup() {
           </div>
         )}
       </div>
+
+      {/* Cost telemetry */}
+      {costs && (
+        <div style={{ ...cardBase, overflow: 'hidden' }}>
+          <div style={{ padding: '10px 16px', fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--faint)', borderBottom: '1px solid var(--line2)' }}>3 · AI cost</div>
+          <div style={{ padding: '12px 16px', display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap' }}>
+            <span style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 24, fontWeight: 700, color: costs.alert ? 'var(--p1)' : 'var(--ink)' }}>
+              ${costs.todayUsd.toFixed(2)}
+            </span>
+            <span style={{ fontSize: 12, color: 'var(--mut)' }}>today{costs.alert ? ' — over the $3/day bar' : ''}</span>
+            <span style={{ marginLeft: 'auto', display: 'flex', gap: 10, fontSize: 11, color: 'var(--faint)', fontFamily: 'JetBrains Mono, monospace' }}>
+              {costs.days.slice(0, 7).map((d) => <span key={d.date}>{d.date.slice(5)}: ${d.usd.toFixed(2)}</span>)}
+            </span>
+          </div>
+          {costs.byPurposeToday.length > 0 && (
+            <div style={{ padding: '0 16px 12px', display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {costs.byPurposeToday.map((p) => (
+                <span key={p.purpose} style={{ fontSize: 10.5, padding: '2px 8px', borderRadius: 10, background: 'var(--bg)', border: '1px solid var(--line2)', color: 'var(--mut)', fontFamily: 'JetBrains Mono, monospace' }}>
+                  {p.purpose} ${p.usd.toFixed(2)} ({p.calls})
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Audit log */}
+      {auditRows.length > 0 && (
+        <div style={{ ...cardBase, overflow: 'hidden' }}>
+          <div style={{ padding: '10px 16px', fontFamily: 'JetBrains Mono, monospace', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.08em', color: 'var(--faint)', borderBottom: '1px solid var(--line2)' }}>4 · Recent agent activity</div>
+          <div style={{ padding: '8px 16px 12px', maxHeight: 260, overflowY: 'auto' }}>
+            {auditRows.map((r, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, padding: '3px 0', fontSize: 11.5, alignItems: 'baseline' }}>
+                <span style={{ color: 'var(--faint)', fontFamily: 'JetBrains Mono, monospace', flexShrink: 0 }}>
+                  {new Date(r.ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                </span>
+                <span style={{ color: r.actor === 'agent' ? 'var(--violet)' : 'var(--accent)', fontFamily: 'JetBrains Mono, monospace', flexShrink: 0 }}>{r.actor}</span>
+                <span style={{ color: 'var(--ink2)' }}>{r.action}</span>
+                {r.detail && <span style={{ color: 'var(--faint)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.detail}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{ fontSize: 11.5, color: 'var(--faint)', lineHeight: 1.6 }}>
         Instance: {status.user} · {a} · {status.timezone}. Personalize via USER_NAME, USER_BIO, USER_SIGNOFF, USER_TZ,

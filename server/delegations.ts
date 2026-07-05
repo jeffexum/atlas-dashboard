@@ -4,6 +4,7 @@
 // escalates via the briefing + Adler's proactive channel.
 
 import Anthropic from '@anthropic-ai/sdk';
+import { trackModelCall } from './audit.js';
 import { getState, setState, persistNow } from './state.js';
 import type { Delegation } from './state.js';
 import { MODELS } from './models.js';
@@ -113,6 +114,7 @@ Today is ${new Date().toLocaleDateString('en-CA', { timeZone: USER.tz })}. Retur
 Return {"commitments":[]} if none.`,
       }],
     });
+    trackModelCall('delegation-extract', resp.model, resp.usage).catch(() => {});
     const text = resp.content.find((b) => b.type === 'text');
     const raw = text?.type === 'text' ? text.text : '';
     const m = raw.match(/\{[\s\S]*\}/);

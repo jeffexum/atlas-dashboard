@@ -1,6 +1,7 @@
 // server/adler.ts — Adler, your personal coach agent
 
 import Anthropic from '@anthropic-ai/sdk';
+import { trackModelCall, audit } from './audit.js';
 import { USER } from './config.js';
 import { getState, setState, persistNow } from './state.js';
 import { ASSISTANT_TOOLS, executeTool } from './tools.js';
@@ -229,6 +230,7 @@ export async function runAdler(userMessage: string): Promise<string> {
       messages,
     });
 
+    trackModelCall('adler-telegram', response.model, response.usage).catch(() => {});
     messages.push({ role: 'assistant', content: response.content });
 
     if (response.stop_reason === 'end_turn') {
@@ -352,6 +354,7 @@ ${buildPartnerContext()}`;
       messages,
     });
 
+    trackModelCall('adler-partner', response.model, response.usage).catch(() => {});
     messages.push({ role: 'assistant', content: response.content });
 
     if (response.stop_reason === 'end_turn') {
@@ -433,6 +436,7 @@ export async function adlerProactiveCheck(): Promise<string | null> {
       messages: [{ role: 'user', content: buildContext() }],
     });
 
+    trackModelCall('proactive-check', response.model, response.usage).catch(() => {});
     const textBlock = response.content.find((b) => b.type === 'text');
     if (!textBlock || textBlock.type !== 'text') return null;
 
@@ -488,6 +492,7 @@ Respond with JSON only:
       messages: [{ role: 'user', content: prompt }],
     });
 
+    trackModelCall('briefing', response.model, response.usage).catch(() => {});
     const textBlock = response.content.find((b) => b.type === 'text');
     if (!textBlock || textBlock.type !== 'text') return;
 

@@ -1,6 +1,7 @@
 // server/agents.ts — Four AI agents using @anthropic-ai/sdk
 
 import Anthropic from '@anthropic-ai/sdk';
+import { trackModelCall } from './audit.js';
 import { USER } from './config.js';
 import { MODELS } from './models.js';
 import type { ServerState } from './state.js';

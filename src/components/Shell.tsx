@@ -9,6 +9,7 @@ import Todos from '../screens/Todos';
 import Shopping from '../screens/Shopping';
 import Setup from '../screens/Setup';
 import Delegations from '../screens/Delegations';
+import Eval from '../screens/Eval';
 import Goals from '../screens/Goals';
 import Habits from '../screens/Habits';
 import Health from '../screens/Health';
@@ -66,6 +67,7 @@ const NAV: NavGroup[] = [
     group: 'System',
     items: [
       { id: 'setup', label: 'Setup' },
+      { id: 'eval', label: 'Triage Eval' },
     ],
   },
 ];
@@ -108,6 +110,7 @@ export default function Shell({ screen, setScreen }: Props) {
     shopping: { title: 'Shopping', sub: 'household lists' },
     delegations: { title: 'Waiting On', sub: 'what others owe you' },
     setup: { title: 'Setup', sub: 'connections & training' },
+    eval: { title: 'Triage Eval', sub: 'label emails, measure precision' },
     goals: { title: 'Goals', sub: '4 active goals' },
     habits: { title: 'Habits', sub: '5 tracked habits' },
     health: { title: 'Health', sub: "Today's overview" },
@@ -373,6 +376,7 @@ export default function Shell({ screen, setScreen }: Props) {
           {screen === 'shopping' && <Shopping />}
           {screen === 'setup' && <Setup />}
           {screen === 'delegations' && <Delegations />}
+          {screen === 'eval' && <Eval />}
           {screen === 'goals' && <Goals setScreen={setScreen} />}
           {screen === 'habits' && <Habits setScreen={setScreen} />}
           {screen === 'health' && <Health />}

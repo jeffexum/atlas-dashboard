@@ -1,6 +1,7 @@
 // server/whiteboard.ts — Full-featured AI chat for the Whiteboard screen
 
 import Anthropic from '@anthropic-ai/sdk';
+import { trackModelCall, audit } from './audit.js';
 import { USER } from './config.js';
 import { getState, setState, persistNow } from './state.js';
 import { addTask } from './state.js';
@@ -224,6 +225,7 @@ export async function chat(history: ChatMessage[]): Promise<string> {
       messages,
     });
 
+    trackModelCall('adler-whiteboard', response.model, response.usage).catch(() => {});
     messages.push({ role: 'assistant', content: response.content });
 
     if (response.stop_reason === 'end_turn') {
@@ -288,6 +290,7 @@ Only include things explicitly decided or committed to. Skip vague intentions.`,
     }],
   });
 
+  trackModelCall('whiteboard-extract', response.model, response.usage).catch(() => {});
   const textBlock = response.content.find((b) => b.type === 'text');
   const raw = textBlock?.type === 'text' ? textBlock.text : '{"actions":[]}';
 

@@ -2,6 +2,7 @@
 // One definition of what the assistant can do; both surfaces get identical capabilities.
 
 import type Anthropic from '@anthropic-ai/sdk';
+import { audit } from './audit.js';
 import { getState, setState, persistNow } from './state.js';
 import * as state from './state.js';
 import {
@@ -194,6 +195,8 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
 // not thrown, so the assistant can relay what went wrong).
 export async function executeTool(name: string, input: Record<string, unknown>): Promise<string> {
   const s = getState();
+  audit('agent', `tool:${name}`, (input.id || input.commId || input.draftId) as string | undefined,
+    typeof input.title === 'string' ? input.title : typeof input.name === 'string' ? input.name as string : undefined).catch(() => {});
   try {
     switch (name) {
       case 'add_task':

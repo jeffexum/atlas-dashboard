@@ -1,6 +1,7 @@
 // server/index.ts — Express server for Atlas dashboard
 
 import 'dotenv/config';
+import { trackModelCall, audit } from './audit.js';
 import { USER } from './config.js';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
@@ -12,6 +13,7 @@ import { getGoogleAuthUrl, exchangeGoogleCode, syncGoogleCalendar, isGoogleAuthe
 import { syncOura, isOuraConfigured } from './oura.js';
 import { isGmailConnected, syncGmail, replyGmail, fetchGmailBody } from './gmail.js';
 import { syncGoodreads, isGoodreadsConfigured } from './goodreads.js';
+import { ensureGraphSubscription, onMailNotification, GRAPH_CLIENT_STATE } from './webhooks.js';
 import { addDelegation, setDelegationStatus, deleteDelegation, extractDelegations, sweepDelegationStatuses } from './delegations.js';
 import { chat, extractAndApply, saveSession, getSessions } from './whiteboard.js';
 import { createCritical } from './models.js';
@@ -188,6 +190,7 @@ app.get('/api/outlook/callback', async (req: Request, res: Response) => {
 });
 
 app.post('/api/comms/:id/dismiss', async (req: Request, res: Response) => {
+  audit('user', 'route:comm-dismiss', req.params.id as string).catch(() => {});
   dismissComm(req.params.id as string);
   await persistNow();
   res.json({ ok: true });
@@ -247,6 +250,7 @@ app.post('/api/drafts/send', async (req: Request, res: Response) => {
       await sendEmail(draft.to, draft.re, draft.text);
     }
     setState({ drafts: s.drafts.map((d) => d.id === draftId ? { ...d, status: 'sent' as const } : d) });
+    audit('user', 'route:draft-send', draftId, `to ${draft.to} re "${draft.re}"`).catch(() => {});
     await persistNow();
     res.json({ ok: true });
   } catch (err) {
@@ -459,6 +463,7 @@ app.post('/api/knowledge', async (req: Request, res: Response) => {
         content: `The user uploaded this document ("${doc.name}") so their personal assistant knows its contents. Distill everything the assistant should remember — facts about the user, preferences, ongoing projects, people, decisions, style notes. Write dense markdown, max ~300 words. Document:\n\n${doc.content.slice(0, 50_000)}`,
       }],
     });
+    trackModelCall('knowledge-distill', resp.model, resp.usage).catch(() => {});
     const textBlock = resp.content.find((b) => b.type === 'text');
     summary = textBlock?.type === 'text' ? textBlock.text.trim() : '';
   } catch (err) {
@@ -677,6 +682,39 @@ app.post('/api/debug/partner-chat', async (req: Request, res: Response) => {
   }
 });
 
+app.get('/api/eval/emails', async (_req: Request, res: Response) => {
+  try {
+    const { getEvalEmails } = await import('./evals.js');
+    res.json(await getEvalEmails());
+  } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+
+app.post('/api/eval/label', async (req: Request, res: Response) => {
+  try {
+    const { setLabel } = await import('./evals.js');
+    const { id, from, subject, preview, label } = req.body;
+    const total = await setLabel({ id, from, subject, preview }, label);
+    res.json({ ok: true, total });
+  } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+
+app.post('/api/eval/run', async (_req: Request, res: Response) => {
+  try {
+    const { runEval } = await import('./evals.js');
+    res.json(await runEval());
+  } catch (err) { res.status(500).json({ error: (err as Error).message }); }
+});
+
+app.get('/api/admin/audit', async (req: Request, res: Response) => {
+  const { getAudit } = await import('./audit.js');
+  res.json(await getAudit(parseInt((req.query.limit as string) || '200', 10)));
+});
+
+app.get('/api/admin/costs', async (_req: Request, res: Response) => {
+  const { getCosts } = await import('./audit.js');
+  res.json(await getCosts(USER.tz));
+});
+
 app.get('/api/debug/version', (_req: Request, res: Response) => {
   res.json({ commit: process.env.RENDER_GIT_COMMIT || 'unknown', bootedAt: BOOTED_AT });
 });
@@ -744,6 +782,22 @@ app.post('/api/outlook/learn', async (_req: Request, res: Response) => {
   }
 });
 
+// ── Microsoft Graph change notifications ──────────────────────────────────────
+
+app.post('/webhook/graph', (req: Request, res: Response) => {
+  // Subscription validation handshake
+  const validationToken = req.query.validationToken as string | undefined;
+  if (validationToken) {
+    res.status(200).type('text/plain').send(validationToken);
+    return;
+  }
+  res.sendStatus(202); // ack immediately per Graph requirements
+  const notifications = (req.body?.value || []) as { clientState?: string }[];
+  if (notifications.some((n) => n.clientState === GRAPH_CLIENT_STATE)) {
+    onMailNotification();
+  }
+});
+
 // ── Telegram webhook ─────────────────────────────────────────────────────────
 
 let bot: ReturnType<typeof createTelegramBot> | null = null;
@@ -803,7 +857,14 @@ setInterval(async () => {
 setInterval(() => {
   recomputeAllHabits();
   sweepDelegationStatuses();
+  ensureGraphSubscription().catch(() => {}); // renew before the ~3-day Graph expiry
 }, 60 * 60_000);
+
+// Reconciliation sweep: webhooks can die silently — catch anything missed
+setInterval(() => {
+  if (isAuthenticated()) syncMail().catch(() => {});
+  if (isGmailConnected()) syncGmail().catch(() => {});
+}, 30 * 60_000);
 
 // ── Morning briefing at 7am ───────────────────────────────────────────────────
 
@@ -840,6 +901,7 @@ loadPersistedState()
   .then(() => { if (isOuraConfigured()) return syncOura().catch((e) => console.warn('Oura boot sync failed:', (e as Error).message)); })
   .then(() => { if (isGoodreadsConfigured()) return syncGoodreads().catch((e) => console.warn('Goodreads boot sync failed:', (e as Error).message)); })
   .then(() => { sweepDelegationStatuses(); return extractDelegations().catch(() => {}); })
+  .then(() => ensureGraphSubscription().catch(() => {}))
   .then(() => generateBriefing())
   .catch(() => {});
 

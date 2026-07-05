@@ -1,6 +1,7 @@
 // server/outlook.ts — Microsoft Graph OAuth2 + mail/calendar sync
 
 import Anthropic from '@anthropic-ai/sdk';
+import { trackModelCall, audit } from './audit.js';
 import { getState, setState } from './state.js';
 import { MODELS, createCritical } from './models.js';
 
@@ -190,7 +191,26 @@ export function isAuthenticated(): boolean {
   return tokenData !== null;
 }
 
-async function graphGet(path: string, extraHeaders?: Record<string, string>): Promise<unknown> {
+// Generic Graph call with auth + refresh (for subscriptions etc.)
+export async function graphRequest(method: string, path: string, body?: unknown): Promise<unknown> {
+  let token = await getAccessToken();
+  const doFetch = (tk: string) => fetch(`https://graph.microsoft.com/v1.0${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${tk}`, 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  let res = await doFetch(token);
+  if (res.status === 401) {
+    await refreshAccessToken();
+    token = tokenData!.access_token;
+    res = await doFetch(token);
+  }
+  if (!res.ok) throw new Error(`Graph ${method} ${path} returned ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  if (res.status === 204) return null;
+  return res.json();
+}
+
+export async function graphGet(path: string, extraHeaders?: Record<string, string>): Promise<unknown> {
   let token = await getAccessToken();
   let res = await fetch(`https://graph.microsoft.com/v1.0${path}`, {
     headers: { Authorization: `Bearer ${token}`, ...extraHeaders },
@@ -348,6 +368,7 @@ ${list}
 Reply with just the numbers, comma-separated. Example: 1,3,5`,
     }],
   });
+  trackModelCall('email-triage', response.model, response.usage).catch(() => {});
   const text = response.content.find((b) => b.type === 'text');
   const raw = text?.type === 'text' ? text.text.trim() : '';
   const indices = new Set(raw.split(',').map((n) => parseInt(n.trim(), 10) - 1).filter((n) => !isNaN(n)));

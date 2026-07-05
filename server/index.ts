@@ -10,6 +10,7 @@ import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, load
 import { getGoogleAuthUrl, exchangeGoogleCode, syncGoogleCalendar, isGoogleAuthenticated, loadGoogleToken } from './google.js';
 import { syncOura, isOuraConfigured } from './oura.js';
 import { chat, extractAndApply, saveSession, getSessions } from './whiteboard.js';
+import { createCritical } from './models.js';
 import type { ChatMessage } from './whiteboard.js';
 import { createTelegramBot, activeChatIds, sendMorningBriefing, sendHabitReminder } from './telegram.js';
 
@@ -262,8 +263,7 @@ ${instruction}
 Rewrite the draft applying the instruction while keeping Jeff's voice. Keep the format: greeting line, blank line, short body, blank line, "Cheers,\nJeff". Return ONLY the revised reply text.`;
 
   try {
-    const response = await client.messages.create({
-      model: 'claude-sonnet-4-6',
+    const response = await createCritical(client, {
       max_tokens: 1024,
       messages: [{ role: 'user', content: prompt }],
     });
@@ -313,9 +313,8 @@ Jeff
 
 No subject line. Return only the reply text.`;
 
-  const response = await client.messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 512,
+  const response = await createCritical(client, {
+    max_tokens: 1024,
     messages: [{ role: 'user', content: prompt }],
   });
 

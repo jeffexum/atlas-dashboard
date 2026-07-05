@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { getState, setState, persistNow } from './state.js';
 import { addTask } from './state.js';
 import { ASSISTANT_TOOLS, executeTool } from './tools.js';
+import { MODELS } from './models.js';
 
 let _anthropic: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -209,7 +210,7 @@ export async function chat(history: ChatMessage[]): Promise<string> {
   // Agentic loop — same tool set as Adler on Telegram
   for (let i = 0; i < 8; i++) {
     const response = await getClient().messages.create({
-      model: 'claude-sonnet-4-6',
+      model: MODELS.standard,
       max_tokens: 4096,
       system,
       tools: ASSISTANT_TOOLS,
@@ -259,7 +260,7 @@ export async function extractAndApply(history: ChatMessage[]): Promise<{ tasks: 
     .join('\n\n');
 
   const response = await getClient().messages.create({
-    model: 'claude-sonnet-4-6',
+    model: MODELS.cheap,
     max_tokens: 1024,
     messages: [{
       role: 'user',

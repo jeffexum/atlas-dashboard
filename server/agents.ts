@@ -1,6 +1,7 @@
 // server/agents.ts — Four AI agents using @anthropic-ai/sdk
 
 import Anthropic from '@anthropic-ai/sdk';
+import { MODELS } from './models.js';
 import type { ServerState } from './state.js';
 import * as state from './state.js';
 import { persistNow } from './state.js';
@@ -373,7 +374,7 @@ When the user asks you to DO something (add a task, log a habit, create an event
 
   try {
     const response = await getClient().messages.create({
-      model: 'claude-sonnet-4-6',
+      model: MODELS.standard,
       max_tokens: 1024,
       system: systemPrompt,
       tools: TOOLS,

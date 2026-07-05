@@ -3,6 +3,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getState, setState, persistNow } from './state.js';
 import { ASSISTANT_TOOLS, executeTool } from './tools.js';
+import { MODELS } from './models.js';
 
 let _anthropic: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -214,7 +215,7 @@ export async function runAdler(userMessage: string): Promise<string> {
   // Agentic loop — keep going until stop_reason is 'end_turn' (no more tool calls)
   for (let i = 0; i < 8; i++) {
     const response = await getClient().messages.create({
-      model: 'claude-sonnet-4-6',
+      model: MODELS.standard,
       max_tokens: 2048,
       system,
       tools: ASSISTANT_TOOLS,
@@ -337,7 +338,7 @@ ${buildPartnerContext()}`;
 
   for (let i = 0; i < 5; i++) {
     const response = await getClient().messages.create({
-      model: 'claude-sonnet-4-6',
+      model: MODELS.cheap,
       max_tokens: 1024,
       system,
       tools: PARTNER_TOOLS,
@@ -418,7 +419,7 @@ export async function adlerProactiveCheck(): Promise<string | null> {
 
   try {
     const response = await getClient().messages.create({
-      model: 'claude-haiku-4-5-20251001',
+      model: MODELS.cheap,
       max_tokens: 512,
       system: PROACTIVE_SYSTEM,
       messages: [{ role: 'user', content: buildContext() }],
@@ -474,7 +475,7 @@ Respond with JSON only:
 
   try {
     const response = await getClient().messages.create({
-      model: 'claude-sonnet-4-6',
+      model: MODELS.standard,
       max_tokens: 1024,
       messages: [{ role: 'user', content: prompt }],
     });

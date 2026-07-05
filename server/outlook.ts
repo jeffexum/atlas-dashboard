@@ -2,6 +2,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { getState, setState } from './state.js';
+import { MODELS, createCritical } from './models.js';
 
 let _anthropic: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -100,9 +101,8 @@ Based on these emails, write a detailed markdown profile covering:
 
 Write in markdown. Be specific — use actual names, phrases, and examples you observe in the emails. This profile will be used to draft emails on their behalf.`;
 
-  const response = await getClient().messages.create({
-    model: 'claude-sonnet-4-6',
-    max_tokens: 2048,
+  const response = await createCritical(getClient(), {
+    max_tokens: 4096,
     messages: [{ role: 'user', content: prompt }],
   });
 
@@ -337,7 +337,7 @@ async function scoreEmailsWithAI(emails: { id: string; from: string; subject: st
   if (!emails.length || !process.env.ANTHROPIC_API_KEY) return new Set(emails.map((e) => e.id));
   const list = emails.map((e, i) => `${i + 1}. From: ${e.from} | Subject: ${e.subject} | Preview: ${e.preview}`).join('\n');
   const response = await getClient().messages.create({
-    model: 'claude-haiku-4-5-20251001',
+    model: MODELS.cheap,
     max_tokens: 256,
     messages: [{
       role: 'user',

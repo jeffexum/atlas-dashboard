@@ -8,6 +8,7 @@ export type Screen =
   | 'calendar'
   | 'todos'
   | 'shopping'
+  | 'delegations'
   | 'goals'
   | 'habits'
   | 'health'

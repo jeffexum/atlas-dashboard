@@ -11,6 +11,7 @@ import {
 import { syncGoogleCalendar, isGoogleAuthenticated } from './google.js';
 import { isGmailConnected, syncGmail, replyGmail, fetchGmailBody } from './gmail.js';
 import { syncOura, isOuraConfigured } from './oura.js';
+import { addDelegation, setDelegationStatus, deleteDelegation } from './delegations.js';
 
 export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   // ── Tasks ──
@@ -116,6 +117,22 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
     name: 'add_todo_from_comm',
     description: 'Create a task from an inbox message',
     input_schema: { type: 'object' as const, properties: { commId: { type: 'string' } }, required: ['commId'] },
+  },
+  // ── Delegations (things others owe the user) ──
+  {
+    name: 'add_delegation',
+    description: 'Track a commitment someone made — something the user is WAITING ON from another person (work or personal). E.g. "Mike will send the redline Friday", "contractor quoting by Tuesday".',
+    input_schema: { type: 'object' as const, properties: { what: { type: 'string', description: 'The deliverable' }, who: { type: 'string', description: 'Who owes it' }, dueDate: { type: 'string', description: 'YYYY-MM-DD, omit if unknown' } }, required: ['what', 'who'] },
+  },
+  {
+    name: 'complete_delegation',
+    description: 'Mark a tracked delegation as done (the person delivered)',
+    input_schema: { type: 'object' as const, properties: { id: { type: 'string' } }, required: ['id'] },
+  },
+  {
+    name: 'delete_delegation',
+    description: 'Remove a delegation that was extracted incorrectly or is no longer relevant',
+    input_schema: { type: 'object' as const, properties: { id: { type: 'string' } }, required: ['id'] },
   },
   // ── Shopping list ──
   {
@@ -304,6 +321,19 @@ export async function executeTool(name: string, input: Record<string, unknown>):
       case 'add_todo_from_comm':
         state.addTodoFromComm(input.commId as string);
         return 'Task created from email.';
+      case 'add_delegation': {
+        const d = addDelegation({ what: input.what as string, who: input.who as string, dueDate: input.dueDate as string | undefined });
+        await persistNow();
+        return `Now tracking: ${d.who} owes "${d.what}"${d.dueDate ? ` by ${d.dueDate}` : ''} (id ${d.id}).`;
+      }
+      case 'complete_delegation':
+        setDelegationStatus(input.id as string, 'done');
+        await persistNow();
+        return 'Marked delivered.';
+      case 'delete_delegation':
+        deleteDelegation(input.id as string);
+        await persistNow();
+        return 'Delegation removed.';
       case 'add_shopping_item': {
         const item = state.addShoppingItem(input.name as string, input.category as state.ShoppingCategory, 'Adler');
         await persistNow();

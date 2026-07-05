@@ -8,6 +8,7 @@ import Calendar from '../screens/Calendar';
 import Todos from '../screens/Todos';
 import Shopping from '../screens/Shopping';
 import Setup from '../screens/Setup';
+import Delegations from '../screens/Delegations';
 import Goals from '../screens/Goals';
 import Habits from '../screens/Habits';
 import Health from '../screens/Health';
@@ -40,6 +41,7 @@ const NAV: NavGroup[] = [
     items: [
       { id: 'calendar', label: 'Calendar' },
       { id: 'todos', label: 'To-dos' },
+      { id: 'delegations', label: 'Waiting On' },
       { id: 'shopping', label: 'Shopping' },
       { id: 'goals', label: 'Goals' },
     ],
@@ -104,6 +106,7 @@ export default function Shell({ screen, setScreen }: Props) {
     calendar: { title: 'Calendar', sub: now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' }) },
     todos: { title: 'To-dos', sub: `${todayTaskCount} tasks today` },
     shopping: { title: 'Shopping', sub: 'household lists' },
+    delegations: { title: 'Waiting On', sub: 'what others owe you' },
     setup: { title: 'Setup', sub: 'connections & training' },
     goals: { title: 'Goals', sub: '4 active goals' },
     habits: { title: 'Habits', sub: '5 tracked habits' },
@@ -369,6 +372,7 @@ export default function Shell({ screen, setScreen }: Props) {
           {screen === 'todos' && <Todos setScreen={setScreen} />}
           {screen === 'shopping' && <Shopping />}
           {screen === 'setup' && <Setup />}
+          {screen === 'delegations' && <Delegations />}
           {screen === 'goals' && <Goals setScreen={setScreen} />}
           {screen === 'habits' && <Habits setScreen={setScreen} />}
           {screen === 'health' && <Health />}

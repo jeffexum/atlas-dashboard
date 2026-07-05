@@ -12,6 +12,7 @@ import { getGoogleAuthUrl, exchangeGoogleCode, syncGoogleCalendar, isGoogleAuthe
 import { syncOura, isOuraConfigured } from './oura.js';
 import { isGmailConnected, syncGmail, replyGmail, fetchGmailBody } from './gmail.js';
 import { syncGoodreads, isGoodreadsConfigured } from './goodreads.js';
+import { addDelegation, setDelegationStatus, deleteDelegation, extractDelegations, sweepDelegationStatuses } from './delegations.js';
 import { chat, extractAndApply, saveSession, getSessions } from './whiteboard.js';
 import { createCritical } from './models.js';
 import type { ChatMessage } from './whiteboard.js';
@@ -217,7 +218,8 @@ app.get('/api/outlook/sync', async (_req: Request, res: Response) => {
     await syncMail();
     await syncCalendar();
     res.json({ ok: true });
-    // Refresh the daily briefing against the new data (non-blocking)
+    // Non-blocking follow-ups against the fresh data
+    extractDelegations().catch(() => {});
     generateBriefing().catch(() => {});
   } catch (err) {
     console.error('Outlook sync error:', err);
@@ -526,6 +528,38 @@ app.get('/api/gmail/sync', async (_req: Request, res: Response) => {
   }
 });
 
+// ── Delegations ───────────────────────────────────────────────────────────────
+
+app.post('/api/delegations', async (req: Request, res: Response) => {
+  const { what, who, dueDate } = req.body as { what: string; who: string; dueDate?: string };
+  if (!what?.trim() || !who?.trim()) { res.status(400).json({ error: 'what and who required' }); return; }
+  const d = addDelegation({ what: what.trim(), who: who.trim(), dueDate });
+  await persistNow();
+  res.json({ ok: true, delegation: d });
+});
+
+app.post('/api/delegations/:id/status', async (req: Request, res: Response) => {
+  const { status } = req.body as { status: 'open' | 'nudged' | 'done' | 'slipped' };
+  setDelegationStatus(req.params.id as string, status);
+  await persistNow();
+  res.json({ ok: true });
+});
+
+app.delete('/api/delegations/:id', async (req: Request, res: Response) => {
+  deleteDelegation(req.params.id as string);
+  await persistNow();
+  res.json({ ok: true });
+});
+
+app.post('/api/delegations/extract', async (_req: Request, res: Response) => {
+  try {
+    const added = await extractDelegations();
+    res.json({ ok: true, added });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 // ── Goodreads (Kindle reading via RSS shelves) ────────────────────────────────
 
 app.get('/api/goodreads/sync', async (_req: Request, res: Response) => {
@@ -565,6 +599,7 @@ app.post('/api/sync/all', async (_req: Request, res: Response) => {
   } else results.goodreads = 'not configured';
   await persistNow();
   res.json(results);
+  extractDelegations().catch(() => {});
   generateBriefing().catch(() => {});
 });
 
@@ -763,8 +798,12 @@ setInterval(async () => {
   }
 }, 10 * 60_000);
 
-// Hourly: refresh habit derived fields so day rollover resets "done today" and streaks
-setInterval(() => recomputeAllHabits(), 60 * 60_000);
+// Hourly: refresh habit derived fields so day rollover resets "done today" and streaks,
+// and sweep delegation statuses (open → nudged at T-1 → slipped past due)
+setInterval(() => {
+  recomputeAllHabits();
+  sweepDelegationStatuses();
+}, 60 * 60_000);
 
 // ── Morning briefing at 7am ───────────────────────────────────────────────────
 
@@ -800,6 +839,7 @@ loadPersistedState()
   })
   .then(() => { if (isOuraConfigured()) return syncOura().catch((e) => console.warn('Oura boot sync failed:', (e as Error).message)); })
   .then(() => { if (isGoodreadsConfigured()) return syncGoodreads().catch((e) => console.warn('Goodreads boot sync failed:', (e as Error).message)); })
+  .then(() => { sweepDelegationStatuses(); return extractDelegations().catch(() => {}); })
   .then(() => generateBriefing())
   .catch(() => {});
 

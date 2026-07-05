@@ -107,6 +107,18 @@ export interface ShoppingItem {
   addedAt?: number;
 }
 
+export interface Delegation {
+  id: string;
+  what: string;
+  who: string;
+  dueDate?: string;
+  sourceCommId?: string;
+  sourceQuote?: string;
+  status: 'open' | 'nudged' | 'done' | 'slipped';
+  createdAt: number;
+  updatedAt: number;
+}
+
 // One day of Oura Ring data
 export interface HealthDay {
   date: string;
@@ -156,6 +168,7 @@ interface StoreState {
   calEvents: CalEvent[];
   health: HealthDay[];
   shopping: ShoppingItem[];
+  delegations: Delegation[];
   calNote: string;
   briefingText: string;
   briefingNudges: string[];
@@ -206,6 +219,7 @@ export const useStore = create<StoreState>((set) => ({
   calEvents: [],
   health: [],
   shopping: [],
+  delegations: [],
   calNote: '',
   briefingText: '',
   briefingNudges: [],
@@ -595,6 +609,31 @@ export async function clearBoughtShopping() {
   await fetch(`${API}/api/shopping/clear-bought`, { method: 'POST' }).catch(() => {});
 }
 
+export async function addDelegation(what: string, who: string, dueDate?: string) {
+  const API = import.meta.env.VITE_API_URL || '';
+  await fetch(`${API}/api/delegations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ what, who, dueDate }),
+  }).catch(() => {});
+}
+
+export async function delegationStatus(id: string, status: 'open' | 'nudged' | 'done' | 'slipped') {
+  useStore.setState((s) => ({ delegations: s.delegations.map((d) => d.id === id ? { ...d, status } : d) }));
+  const API = import.meta.env.VITE_API_URL || '';
+  await fetch(`${API}/api/delegations/${id}/status`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  }).catch(() => {});
+}
+
+export async function deleteDelegation(id: string) {
+  useStore.setState((s) => ({ delegations: s.delegations.filter((d) => d.id !== id) }));
+  const API = import.meta.env.VITE_API_URL || '';
+  await fetch(`${API}/api/delegations/${id}`, { method: 'DELETE' }).catch(() => {});
+}
+
 export async function syncStateToServer() {
   const state = useStore.getState()
   await fetch(`${API_URL}/api/state`, {
@@ -621,6 +660,7 @@ function sanitizeServerState(s: Record<string, unknown>) {
     calEvents: arr(s.calEvents),
     health: arr(s.health),
     shopping: arr(s.shopping),
+    delegations: arr(s.delegations),
     briefingNudges: arr(s.briefingNudges),
   };
 }

@@ -153,6 +153,20 @@ export interface KnowledgeDoc {
   addedAt: number;
 }
 
+// A commitment someone made — extracted from email or added manually.
+// "Mike will send the redline by Friday" → what/who/due, tracked to done.
+export interface Delegation {
+  id: string;
+  what: string;
+  who: string;
+  dueDate?: string;        // YYYY-MM-DD local
+  sourceCommId?: string;   // email it was extracted from
+  sourceQuote?: string;    // the sentence that contained the commitment
+  status: 'open' | 'nudged' | 'done' | 'slipped';
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface AdlerMessage {
   role: 'user' | 'adler';
   content: string;
@@ -174,6 +188,7 @@ export interface ServerState {
   health: HealthDay[];
   shopping: ShoppingItem[];
   knowledge: KnowledgeDoc[];
+  delegations: Delegation[];
   calNote: string;
   adlerMemory: AdlerMessage[];
   adlerNotes: Record<string, string>;
@@ -205,6 +220,7 @@ const seedState: ServerState = {
   health: [],
   shopping: [],
   knowledge: [],
+  delegations: [],
   calNote: '',
   adlerMemory: [],
   adlerNotes: {},
@@ -276,6 +292,7 @@ const KEYS = {
   health: 'atlas:health',
   shopping: 'atlas:shopping',
   knowledge: 'atlas:knowledge',
+  delegations: 'atlas:delegations',
   calNote: 'atlas:calNote',
   adlerNotes: 'atlas:adlerNotes',
   adlerMemory: 'atlas:adlerMemory',
@@ -320,6 +337,7 @@ export async function persistNow(): Promise<Record<string, string>> {
     trySet(KEYS.health, _state.health),
     trySet(KEYS.shopping, _state.shopping),
     trySet(KEYS.knowledge, _state.knowledge),
+    trySet(KEYS.delegations, _state.delegations),
     trySet(KEYS.calNote, _state.calNote),
     trySet(KEYS.adlerNotes, _state.adlerNotes),
     trySet(KEYS.adlerMemory, _state.adlerMemory.slice(-20)),
@@ -345,7 +363,7 @@ export async function loadPersistedState(): Promise<void> {
 
     const [
       tasks, comms, drafts, proposedActions, habits, goals, books,
-      highlights, ideas, journalEntries, calEvents, health, shopping, knowledge, calNote,
+      highlights, ideas, journalEntries, calEvents, health, shopping, knowledge, delegations, calNote,
       adlerNotes, adlerMemory, adlerLastContact,
       briefingText, briefingNudges, briefingGeneratedAt, userProfile,
     ] = await Promise.all([
@@ -363,6 +381,7 @@ export async function loadPersistedState(): Promise<void> {
       redisGet<ServerState['health']>(KEYS.health),
       redisGet<ServerState['shopping']>(KEYS.shopping),
       redisGet<ServerState['knowledge']>(KEYS.knowledge),
+      redisGet<ServerState['delegations']>(KEYS.delegations),
       redisGet<string>(KEYS.calNote),
       redisGet<ServerState['adlerNotes']>(KEYS.adlerNotes),
       redisGet<ServerState['adlerMemory']>(KEYS.adlerMemory),
@@ -388,6 +407,7 @@ export async function loadPersistedState(): Promise<void> {
       health: Array.isArray(health) ? health : [],
       shopping: Array.isArray(shopping) ? shopping : [],
       knowledge: Array.isArray(knowledge) ? knowledge : [],
+      delegations: Array.isArray(delegations) ? delegations : [],
       calNote: typeof calNote === 'string' ? calNote : '',
       adlerNotes: (adlerNotes && typeof adlerNotes === 'object' && !Array.isArray(adlerNotes)) ? adlerNotes : {},
       adlerMemory: Array.isArray(adlerMemory) ? adlerMemory : [],
@@ -421,7 +441,7 @@ export async function migrateLegacyState(): Promise<void> {
 
 const ARRAY_FIELDS: (keyof ServerState)[] = [
   'tasks', 'comms', 'drafts', 'proposedActions', 'habits', 'goals',
-  'books', 'highlights', 'ideas', 'journalEntries', 'calEvents', 'health', 'shopping', 'knowledge',
+  'books', 'highlights', 'ideas', 'journalEntries', 'calEvents', 'health', 'shopping', 'knowledge', 'delegations',
   'adlerMemory', 'briefingNudges',
 ];
 

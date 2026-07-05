@@ -158,6 +158,9 @@ ${calLines.join('\n') || '  nothing scheduled'}
 FREE TIME SLOTS (≥1h, 8am–6pm, both calendars considered):
 ${gapLines.join('\n') || '  none in the next 3 days'}
 
+DELEGATIONS — things others owe ${USER.firstName} (use exact IDs for complete_delegation / delete_delegation; reply_to_email the source to chase):
+${s.delegations.filter((d) => d.status !== 'done').map((d) => `  [${d.id}] ${d.status.toUpperCase()}${d.status === 'slipped' ? ' ⚠️' : ''}: ${d.who} owes "${d.what}"${d.dueDate ? ` by ${d.dueDate}` : ''}${d.sourceCommId ? ` (source email: ${d.sourceCommId})` : ''}`).join('\n') || '  none tracked'}
+
 SHOPPING LIST (use exact IDs for check_shopping_item / remove_shopping_item):
 ${s.shopping.filter((i) => !i.done).map((i) => `  [${i.id}] ${i.category}: ${i.name}${i.addedBy && i.addedBy !== USER.firstName ? ` (added by ${i.addedBy})` : ''}`).join('\n') || '  empty'}
 
@@ -403,6 +406,7 @@ GUIDELINES FOR REACHING OUT:
 - Night (9pm+): only reach out if something is critically overdue
 - Any time: if a streak is about to break (> 20 day streak, habit not logged after 6pm), always reach out
 - Any time: if a task is due within 2 days (or overdue) and nothing on the calendar covers it, reach out ONCE with 1-2 specific free slots from FREE TIME SLOTS to schedule it (e.g. "The consulting contract is due tomorrow — want me to block 10–11am or 2–3pm for it?")
+- Any time: if a DELEGATION is due tomorrow (status NUDGED) or newly SLIPPED, reach out ONCE offering to draft a chase email to the owner (e.g. "Mike's redline is due tomorrow — want me to draft a nudge?")
 - Don't reach out if you messaged in the last 90 minutes unless something changed significantly
 
 Respond with JSON only:

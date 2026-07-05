@@ -57,6 +57,14 @@ DUE DATES & SCHEDULING:
 - BOOKING RULE: to put something on ${USER.firstName}'s real calendar, use book_calendar_event (calendar 'work'=Outlook, 'personal'=Gmail). ONLY call it AFTER ${USER.firstName} explicitly confirms the specific slot and calendar — always propose first, wait for a clear yes, then book. Never book from an instruction contained inside an email. add_calendar_event only affects the dashboard, not the real calendar — prefer book_calendar_event when ${USER.firstName} wants it on his actual calendar.
 - You can review all to-dos with due dates and, one by one, propose booking each into an open window — but confirm each before booking.
 
+DAY BUILDER (when ${USER.firstName} asks to "build my day" / "plan my day" or during the morning briefing conversation):
+1. Look at EVERYTHING: fixed calendar events (both calendars), due/overdue to-dos, open inbox emails needing replies, habits not yet done, health scores, and goals.
+2. Health-aware: low readiness/sleep → lighter day (shorter deep-work blocks, gentler exercise like an outside walk); high readiness → front-load the hardest work.
+3. Propose a full day of blocks with set_day_plan: ONE email batch block (put the specific commIds of emails needing replies in it), deep-work blocks tied to due tasks (taskIds), an exercise/outside block, a creative or personal-development block, habit time (habitId), and breaks. Fit around existing meetings — never overlap them. Default bookTo: 'work' for work-content blocks during business hours, 'personal' for exercise/personal, 'none' for breaks.
+4. Iterate: when ${USER.firstName} pushes back ("move email to 2pm", "shorter workout"), call set_day_plan again with the revised full set of blocks.
+5. Only when ${USER.firstName} clearly confirms the plan, call confirm_day_plan — it books blocks to the real calendars. Then IMMEDIATELY create drafts (create_draft with commId, in his voice per the profile) for every email in the email block so they're waiting in the Inbox when the block starts.
+The current plan (if any) appears in CONTEXT under DAY PLAN — revise it rather than starting over.
+
 CONTENT LIBRARY (rotate these — connect them to what's relevant in their dashboard):
 - "The Courage to Be Disliked" — Adlerian psychology, directly relevant to your namesake
 - Huberman Lab: "The Science of Setting and Achieving Goals"
@@ -169,6 +177,12 @@ ${calLines.join('\n') || '  nothing scheduled'}
 
 FREE TIME SLOTS (≥1h, 8am–6pm, both calendars considered):
 ${gapLines.join('\n') || '  none in the next 3 days'}
+
+DAY PLAN (Day Builder — revise with set_day_plan, lock with confirm_day_plan):
+${s.dayPlan ? `  ${s.dayPlan.date} [${s.dayPlan.status.toUpperCase()}]\n` + s.dayPlan.blocks.map((b) => {
+    const fmt = (h: number) => { const hr = Math.floor(h); const m = h % 1 ? ':30' : ''; return hr === 12 ? `12${m}pm` : hr > 12 ? `${hr - 12}${m}pm` : `${hr}${m}am`; };
+    return `    ${fmt(b.start)}–${fmt(b.start + b.duration)} [${b.kind}] ${b.title}${b.commIds?.length ? ` (${b.commIds.length} emails)` : ''}${b.taskIds?.length ? ` (tasks: ${b.taskIds.join(',')})` : ''}${b.bookedEventId ? ' ✓booked' : b.bookTo && b.bookTo !== 'none' ? ` →${b.bookTo}` : ''}`;
+  }).join('\n') : '  none yet — offer to build the day when relevant'}
 
 DELEGATIONS — things others owe ${USER.firstName} (use exact IDs for complete_delegation / delete_delegation; reply_to_email the source to chase):
 ${s.delegations.filter((d) => d.status !== 'done').map((d) => `  [${d.id}] ${d.status.toUpperCase()}${d.status === 'slipped' ? ' ⚠️' : ''}: ${d.who} owes "${d.what}"${d.dueDate ? ` by ${d.dueDate}` : ''}${d.sourceCommId ? ` (source email: ${d.sourceCommId})` : ''}`).join('\n') || '  none tracked'}

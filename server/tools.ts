@@ -69,6 +69,30 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
     description: 'Add an event to the Atlas dashboard calendar ONLY (does not write to the real Outlook/Google calendar). Use book_calendar_event to put something on the user\'s actual calendar.',
     input_schema: { type: 'object' as const, properties: { title: { type: 'string' }, start: { type: 'number', description: 'Start hour as decimal (e.g. 9.5 = 9:30am)' }, duration: { type: 'number', description: 'Duration in hours' }, category: { type: 'string' }, date: { type: 'number', description: 'Day of month' } }, required: ['title', 'start', 'duration', 'category', 'date'] },
   },
+  // ── Day Builder ──
+  {
+    name: 'set_day_plan',
+    description: "Create or replace the day plan (Day Builder). Call this whenever proposing or revising the day's block schedule with the user. Blocks should cover email batch, deep work on due tasks, exercise/outside time, creative/personal-development time, habits, and breaks — fitted around existing calendar events. This only updates the plan on the dashboard; nothing is booked until confirm_day_plan.",
+    input_schema: { type: 'object' as const, properties: {
+      date: { type: 'string', description: 'YYYY-MM-DD (user timezone)' },
+      blocks: { type: 'array', items: { type: 'object', properties: {
+        start: { type: 'number', description: 'start hour decimal, e.g. 9.5' },
+        duration: { type: 'number', description: 'hours' },
+        kind: { type: 'string', enum: ['email', 'deep-work', 'meeting', 'habit', 'exercise', 'creative', 'personal', 'break'] },
+        title: { type: 'string' },
+        note: { type: 'string' },
+        taskIds: { type: 'array', items: { type: 'string' } },
+        commIds: { type: 'array', items: { type: 'string' }, description: 'inbox email ids to batch in this block (email kind)' },
+        habitId: { type: 'string' },
+        bookTo: { type: 'string', enum: ['work', 'personal', 'none'], description: 'which real calendar to book on confirm (default none)' },
+      }, required: ['start', 'duration', 'kind', 'title'] } },
+    }, required: ['date', 'blocks'] },
+  },
+  {
+    name: 'confirm_day_plan',
+    description: "Lock in the current day plan after the user explicitly confirms it. Books every block with bookTo work/personal onto the real calendar. After calling this, create drafts (create_draft with commId) for each email in the plan's email block so they're ready in the Inbox.",
+    input_schema: { type: 'object' as const, properties: {}, required: [] },
+  },
   {
     name: 'delete_calendar_event',
     description: "Delete a REAL calendar event from the user's Outlook or Gmail calendar. Use the event id from the calendar context (Outlook ids are long alphanumeric; Gmail ids start with 'gcal-'). Confirm with the user first unless they explicitly asked to cancel/remove it.",
@@ -290,6 +314,60 @@ export async function executeTool(name: string, input: Record<string, unknown>):
           return `Failed to book event: ${msg}`;
         }
         return `Booked "${input.title}" on the ${calendar === 'work' ? 'work (Outlook)' : 'personal (Gmail)'} calendar for ${dateStr} at ${toClock(startHour).slice(11, 16)} (${durationMin} min).`;
+      }
+      case 'set_day_plan': {
+        const date = input.date as string;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return `Invalid date "${date}" — expected YYYY-MM-DD.`;
+        const raw = input.blocks as Array<Record<string, unknown>>;
+        if (!Array.isArray(raw) || raw.length === 0) return 'blocks must be a non-empty array.';
+        const prev = getState().dayPlan;
+        const blocks = raw.map((b, i) => ({
+          id: `blk-${Date.now()}-${i}`,
+          start: Number(b.start),
+          duration: Number(b.duration) || 0.5,
+          kind: (b.kind as string) || 'personal',
+          title: String(b.title || 'Untitled block'),
+          ...(b.note ? { note: String(b.note) } : {}),
+          ...(Array.isArray(b.taskIds) ? { taskIds: b.taskIds as string[] } : {}),
+          ...(Array.isArray(b.commIds) ? { commIds: b.commIds as string[] } : {}),
+          ...(b.habitId ? { habitId: String(b.habitId) } : {}),
+          bookTo: (b.bookTo as string) || 'none',
+        })) as NonNullable<ReturnType<typeof getState>['dayPlan']>['blocks'];
+        blocks.sort((a, b) => a.start - b.start);
+        setState({ dayPlan: { date, status: 'draft', blocks, updatedAt: Date.now() } });
+        await persistNow();
+        const emails = blocks.filter((b) => b.kind === 'email').flatMap((b) => b.commIds || []).length;
+        return `Day plan ${prev && prev.date === date ? 'revised' : 'created'} for ${date}: ${blocks.length} blocks (${emails} emails queued in the email block). Status: draft — awaiting the user's confirmation.`;
+      }
+      case 'confirm_day_plan': {
+        const plan = getState().dayPlan;
+        if (!plan) return 'No day plan exists — call set_day_plan first.';
+        if (plan.status === 'confirmed') return 'The day plan is already confirmed.';
+        const booked: string[] = [];
+        const failed: string[] = [];
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const clock = (h: number) => `${plan.date}T${pad(Math.floor(h))}:${pad(Math.round((h % 1) * 60))}:00`;
+        const updatedBlocks = [...plan.blocks];
+        for (let i = 0; i < updatedBlocks.length; i++) {
+          const b = updatedBlocks[i]!;
+          if (b.bookTo !== 'work' && b.bookTo !== 'personal') continue;
+          try {
+            const eventId = b.bookTo === 'work'
+              ? await createOutlookEvent({ subject: b.title, startLocal: clock(b.start), endLocal: clock(b.start + b.duration), tz: USER.tz })
+              : await createGoogleEvent({ summary: b.title, startLocal: clock(b.start), endLocal: clock(b.start + b.duration), tz: USER.tz });
+            updatedBlocks[i] = { ...b, bookedEventId: b.bookTo === 'personal' ? `gcal-${eventId}` : eventId };
+            booked.push(`${b.title} → ${b.bookTo}`);
+          } catch (err) {
+            failed.push(`${b.title}: ${(err as Error).message.slice(0, 120)}`);
+          }
+        }
+        setState({ dayPlan: { ...plan, blocks: updatedBlocks, status: 'confirmed', updatedAt: Date.now() } });
+        await persistNow();
+        // Refresh dashboard calendars so booked blocks appear
+        try { if (booked.some((x) => x.includes('work'))) await syncCalendar(); } catch { /* non-fatal */ }
+        try { if (booked.some((x) => x.includes('personal'))) await syncGoogleCalendar(); } catch { /* non-fatal */ }
+        const emailComms = updatedBlocks.filter((b) => b.kind === 'email').flatMap((b) => b.commIds || []);
+        return `Day plan confirmed. Booked ${booked.length} block(s)${booked.length ? `: ${booked.join('; ')}` : ''}.${failed.length ? ` FAILED: ${failed.join('; ')}.` : ''}${emailComms.length ? ` Now create drafts (create_draft with commId) for these ${emailComms.length} emails in the email block: ${emailComms.join(', ')}.` : ''}`;
       }
       case 'delete_calendar_event': {
         const eventId = input.eventId as string;

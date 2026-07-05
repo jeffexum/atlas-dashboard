@@ -173,6 +173,31 @@ export interface AdlerMessage {
   ts: number;
 }
 
+// ── Day Builder ───────────────────────────────────────────────────────────────
+// A collaboratively built plan for one day: Adler proposes blocks from the full
+// context (tasks, inbox, habits, health, calendar), the user iterates in chat,
+// and confirming books real calendar events + queues the email block in the Inbox.
+export interface DayBlock {
+  id: string;
+  start: number;      // start hour, decimal local time (e.g. 9.5)
+  duration: number;   // hours
+  kind: 'email' | 'deep-work' | 'meeting' | 'habit' | 'exercise' | 'creative' | 'personal' | 'break';
+  title: string;
+  note?: string;
+  taskIds?: string[]; // to-dos this block covers
+  commIds?: string[]; // inbox emails handled in this block (email kind)
+  habitId?: string;   // habit this block fulfills
+  bookTo?: 'work' | 'personal' | 'none'; // which real calendar on confirm
+  bookedEventId?: string; // set once booked
+}
+
+export interface DayPlan {
+  date: string; // YYYY-MM-DD in the user's timezone
+  status: 'draft' | 'confirmed';
+  blocks: DayBlock[];
+  updatedAt: number;
+}
+
 export interface ServerState {
   tasks: Task[];
   comms: Comm[];
@@ -200,6 +225,7 @@ export interface ServerState {
   // Durable dismissed/snoozed overrides keyed by comm id, so a hidden email stays
   // hidden even if the AI scorer drops it from one sync then re-includes it later.
   commStatusOverrides: Record<string, 'dismissed' | 'snoozed'>;
+  dayPlan: DayPlan | null;
 }
 
 function makeHeatmap(rate: number, name: string): boolean[] {
@@ -233,6 +259,7 @@ const seedState: ServerState = {
   briefingGeneratedAt: 0,
   userProfile: '',
   commStatusOverrides: {},
+  dayPlan: null,
 };
 
 // Deep clone seed so we can reset if needed
@@ -314,6 +341,7 @@ const KEYS = {
   briefingNudges: 'atlas:briefingNudges',
   briefingGeneratedAt: 'atlas:briefingGeneratedAt',
   userProfile: 'atlas:userProfile',
+  dayPlan: 'atlas:dayPlan',
   commStatusOverrides: 'atlas:commStatusOverrides',
 } as const;
 
@@ -377,6 +405,7 @@ async function _persistNow(): Promise<Record<string, string>> {
     trySet(KEYS.briefingNudges, _state.briefingNudges),
     trySet(KEYS.briefingGeneratedAt, _state.briefingGeneratedAt),
     trySet(KEYS.userProfile, _state.userProfile),
+    trySet(KEYS.dayPlan, _state.dayPlan),
     trySet(KEYS.commStatusOverrides, _state.commStatusOverrides),
   ]);
   const failed = Object.entries(results).filter(([, v]) => v !== 'OK');
@@ -421,7 +450,7 @@ async function _loadOnce(): Promise<void> {
       tasks, comms, drafts, proposedActions, habits, goals, books,
       highlights, ideas, journalEntries, calEvents, health, shopping, knowledge, delegations, calNote,
       adlerNotes, adlerMemory, adlerLastContact,
-      briefingText, briefingNudges, briefingGeneratedAt, userProfile, commStatusOverrides,
+      briefingText, briefingNudges, briefingGeneratedAt, userProfile, commStatusOverrides, dayPlan,
     ] = await Promise.all([
       redisGet<ServerState['tasks']>(KEYS.tasks),
       redisGet<ServerState['comms']>(KEYS.comms),
@@ -447,6 +476,7 @@ async function _loadOnce(): Promise<void> {
       redisGet<number>(KEYS.briefingGeneratedAt),
       redisGet<string>(KEYS.userProfile),
       redisGet<ServerState['commStatusOverrides']>(KEYS.commStatusOverrides),
+      redisGet<ServerState['dayPlan']>(KEYS.dayPlan),
     ]);
 
     _state = sanitize({
@@ -474,6 +504,7 @@ async function _loadOnce(): Promise<void> {
       briefingGeneratedAt: typeof briefingGeneratedAt === 'number' ? briefingGeneratedAt : 0,
       userProfile: typeof userProfile === 'string' ? userProfile : '',
       commStatusOverrides: (commStatusOverrides && typeof commStatusOverrides === 'object' && !Array.isArray(commStatusOverrides)) ? commStatusOverrides : {},
+      dayPlan: (dayPlan && typeof dayPlan === 'object' && !Array.isArray(dayPlan) && Array.isArray((dayPlan as { blocks?: unknown }).blocks)) ? dayPlan : null,
     });
     console.log(`State restored from Redis: ${_state.tasks.length} tasks`);
   }

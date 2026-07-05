@@ -395,6 +395,12 @@ type MailSource = 'all' | 'work' | 'personal';
 export default function Inbox({ setScreen: _setScreen }: Props) {
   const [source, setSource] = useState<MailSource>('all');
   const allComms = useStore((s) => s.comms).filter((c) => c.status !== 'dismissed');
+  const dayPlan = useStore((s) => s.dayPlan);
+  // Today's email block from the Day Builder: which emails are queued, when, drafts ready?
+  const todayStr = new Date().toLocaleDateString('en-CA');
+  const emailBlock = dayPlan?.date === todayStr
+    ? dayPlan.blocks.find((b) => b.kind === 'email' && (b.commIds?.length || 0) > 0)
+    : undefined;
   // Gmail comms are prefixed "gm-"; everything else is Outlook (work).
   const isPersonal = (id: string) => id.startsWith('gm-');
   const workCount = allComms.filter((c) => !isPersonal(c.id)).length;
@@ -546,6 +552,36 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
             </a>
           </div>
         </div>
+
+        {/* Today's email block (from the Day Builder) */}
+        {emailBlock && (
+          <div style={{ ...cardBase, marginBottom: 14, borderLeft: '4px solid var(--blue)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 13, fontWeight: 600 }}>✉ Today's email block</span>
+              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: 'var(--faint)' }}>
+                {(() => { const f = (h: number) => { const hr = Math.floor(h); const m = h % 1 ? ':30' : ''; return hr === 12 ? `12${m}pm` : hr > 12 ? `${hr - 12}${m}pm` : `${hr}${m}am`; }; return `${f(emailBlock.start)}–${f(emailBlock.start + emailBlock.duration)}`; })()}
+              </span>
+              {dayPlan?.status === 'confirmed' && <span style={{ fontSize: 10, color: 'var(--accent)' }}>✓ on calendar</span>}
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              {(emailBlock.commIds || []).map((cid) => {
+                const comm = allComms.find((c) => c.id === cid);
+                const draft = drafts.find((d) => d.commId === cid && d.status === 'ready');
+                if (!comm) return null;
+                return (
+                  <div key={cid} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5 }}>
+                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: priorityColor(comm.priority), flexShrink: 0 }} />
+                    <span style={{ fontWeight: 500, color: 'var(--ink)' }}>{comm.who}</span>
+                    <span style={{ color: 'var(--mut)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>{comm.subject}</span>
+                    <span style={{ fontSize: 10.5, fontFamily: "'JetBrains Mono', monospace", color: draft ? 'var(--accent)' : 'var(--faint)', flexShrink: 0 }}>
+                      {draft ? '✓ draft ready' : 'no draft yet'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Source toggle: All / Work (Outlook) / Personal (Gmail) */}
         <div style={{ display: 'inline-flex', gap: 2, padding: 2, marginBottom: 14, background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 8 }}>

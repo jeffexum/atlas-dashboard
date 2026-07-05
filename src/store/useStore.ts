@@ -154,6 +154,27 @@ export function makeHeatmap(rate: number, name: string): boolean[] {
 }
 
 
+export interface DayBlock {
+  id: string;
+  start: number;
+  duration: number;
+  kind: 'email' | 'deep-work' | 'meeting' | 'habit' | 'exercise' | 'creative' | 'personal' | 'break';
+  title: string;
+  note?: string;
+  taskIds?: string[];
+  commIds?: string[];
+  habitId?: string;
+  bookTo?: 'work' | 'personal' | 'none';
+  bookedEventId?: string;
+}
+
+export interface DayPlan {
+  date: string;
+  status: 'draft' | 'confirmed';
+  blocks: DayBlock[];
+  updatedAt: number;
+}
+
 interface StoreState {
   tasks: Task[];
   comms: Comm[];
@@ -174,6 +195,7 @@ interface StoreState {
   briefingNudges: string[];
   userProfile: string;
   assistantName: string;
+  dayPlan: DayPlan | null;
   userName: string;
   toast: { kind: 'error' | 'ok'; msg: string } | null;
   sseConnected: boolean;
@@ -228,6 +250,7 @@ export const useStore = create<StoreState>((set) => ({
   briefingNudges: [],
   userProfile: '',
   assistantName: 'Adler',
+  dayPlan: null,
   userName: '',
   toast: null,
   sseConnected: true,

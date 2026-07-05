@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { useStore } from '../store/useStore';
+import { useStore, askAgent } from '../store/useStore';
+import type { DayBlock } from '../store/useStore';
 import type { Screen } from '../App';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -72,6 +73,136 @@ function formatEventTime(start: number) {
   const m = start % 1 ? '30' : '00';
   const ampm = h < 12 ? 'am' : 'pm';
   return `${h > 12 ? h - 12 : h || 12}:${m}${ampm}`;
+}
+
+
+// ── Day Builder card ──────────────────────────────────────────────────────────
+const BLOCK_COLORS: Record<DayBlock['kind'], string> = {
+  'email': 'var(--blue)',
+  'deep-work': 'var(--violet)',
+  'meeting': 'var(--ink2)',
+  'habit': 'var(--accent)',
+  'exercise': 'oklch(0.65 0.15 145)',
+  'creative': 'oklch(0.7 0.14 60)',
+  'personal': 'var(--warm)',
+  'break': 'var(--faint)',
+};
+
+function fmtHour(h: number): string {
+  const hr = Math.floor(h); const m = h % 1 ? ':30' : '';
+  return hr === 12 ? `12${m}pm` : hr > 12 ? `${hr - 12}${m}pm` : `${hr}${m}am`;
+}
+
+function DayBuilderCard() {
+  const dayPlan = useStore((s) => s.dayPlan);
+  const assistantName = useStore((s) => s.assistantName);
+  const [busy, setBusy] = useState(false);
+  const [chatInput, setChatInput] = useState('');
+  const [lastReply, setLastReply] = useState('');
+
+  async function ask(message: string) {
+    if (busy) return;
+    setBusy(true);
+    setLastReply('');
+    try {
+      const result = await askAgent(message);
+      setLastReply(result.text || '');
+    } catch {
+      setLastReply(`Couldn't reach ${assistantName} — try again in a moment.`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleChat() {
+    const text = chatInput.trim();
+    if (!text) return;
+    setChatInput('');
+    ask(`(Day Builder) ${text}`);
+  }
+
+  const todayStr = new Date().toLocaleDateString('en-CA');
+  const planIsToday = dayPlan?.date === todayStr;
+
+  return (
+    <div style={{ ...cardBase, padding: '20px', marginBottom: '12px' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <span style={{ fontSize: 13, fontWeight: 600 }}>🗓 Day Builder</span>
+        {dayPlan && planIsToday && (
+          <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", padding: '2px 8px', borderRadius: 10,
+            background: dayPlan.status === 'confirmed' ? 'var(--accentbg)' : 'var(--bg)',
+            color: dayPlan.status === 'confirmed' ? 'var(--accent)' : 'var(--mut)',
+            border: `1px solid ${dayPlan.status === 'confirmed' ? 'var(--accent)' : 'var(--line)'}` }}>
+            {dayPlan.status === 'confirmed' ? '✓ confirmed' : 'draft'}
+          </span>
+        )}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
+          {(!dayPlan || !planIsToday) && (
+            <button onClick={() => ask('Build my day: look at my calendar, due to-dos, inbox, habits, and health scores, and propose a full day plan with set_day_plan — include an email batch block with the specific emails needing replies, deep work on due tasks, exercise/outside time, and creative/personal development time.')}
+              disabled={busy}
+              style={{ padding: '5px 14px', fontSize: 12, fontWeight: 600, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 14, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit', opacity: busy ? 0.6 : 1 }}>
+              {busy ? 'Planning…' : 'Build my day'}
+            </button>
+          )}
+          {dayPlan && planIsToday && dayPlan.status === 'draft' && (
+            <button onClick={() => ask('I confirm the day plan — lock it in with confirm_day_plan, book the blocks, and draft the emails in the email block.')}
+              disabled={busy}
+              style={{ padding: '5px 14px', fontSize: 12, fontWeight: 600, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 14, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit', opacity: busy ? 0.6 : 1 }}>
+              {busy ? 'Working…' : '✓ Confirm & book'}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {dayPlan && planIsToday ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {dayPlan.blocks.map((b) => (
+            <div key={b.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 8px', borderRadius: 5, background: 'var(--bg)' }}>
+              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 11, color: 'var(--faint)', minWidth: 108 }}>
+                {fmtHour(b.start)}–{fmtHour(b.start + b.duration)}
+              </span>
+              <span style={{ width: 8, height: 8, borderRadius: 2, background: BLOCK_COLORS[b.kind] || 'var(--mut)', flexShrink: 0 }} />
+              <span style={{ fontSize: 12.5, color: 'var(--ink)' }}>{b.title}</span>
+              <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: 'var(--faint)' }}>{b.kind}</span>
+              {b.commIds && b.commIds.length > 0 && (
+                <span style={{ fontSize: 10, color: 'var(--blue)' }}>✉ {b.commIds.length}</span>
+              )}
+              <span style={{ marginLeft: 'auto', fontSize: 10, color: b.bookedEventId ? 'var(--accent)' : 'var(--faint)' }}>
+                {b.bookedEventId ? '✓ booked' : b.bookTo && b.bookTo !== 'none' ? `→ ${b.bookTo}` : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p style={{ fontSize: 12.5, color: 'var(--mut)', fontStyle: 'italic', margin: 0 }}>
+          {busy ? `${assistantName} is looking at your calendar, tasks, inbox, and health…` : `No plan for today yet — have ${assistantName} build one around your meetings, due tasks, and readiness.`}
+        </p>
+      )}
+
+      {lastReply && (
+        <div style={{ marginTop: 10, padding: '8px 10px', background: 'var(--accentbg)', borderLeft: '3px solid var(--accent)', borderRadius: 4, fontSize: 12, color: 'var(--ink2)', whiteSpace: 'pre-wrap', maxHeight: 180, overflowY: 'auto' }}>
+          {lastReply}
+        </div>
+      )}
+
+      {dayPlan && planIsToday && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 10 }}>
+          <input
+            value={chatInput}
+            onChange={(e) => setChatInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') handleChat(); }}
+            disabled={busy}
+            placeholder={`Adjust the plan… e.g. "move email to 2pm" or "shorter workout, add a walk"`}
+            style={{ flex: 1, border: '1px solid var(--line)', borderRadius: 14, padding: '5px 12px', fontSize: 12, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--card)', outline: 'none', opacity: busy ? 0.6 : 1 }}
+          />
+          <button onClick={handleChat} disabled={busy || !chatInput.trim()}
+            style={{ padding: '5px 14px', fontSize: 12, fontWeight: 600, background: 'var(--violet)', color: '#fff', border: 'none', borderRadius: 14, cursor: 'pointer', fontFamily: 'inherit', opacity: busy || !chatInput.trim() ? 0.5 : 1 }}>
+            {busy ? '…' : 'Send'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function Home({ setScreen }: HomeProps) {
@@ -161,6 +292,9 @@ export default function Home({ setScreen }: HomeProps) {
           </p>
         )}
       </div>
+
+      {/* Day Builder */}
+      <DayBuilderCard />
 
       {/* Bento Grid */}
       <div style={{ display: 'grid', gridTemplateAreas: `"cal cal tasks habits" "cal cal tasks health" "reading reading finance goals"`, gridTemplateColumns: 'repeat(4, 1fr)', gridTemplateRows: 'auto auto auto', gap: '12px' }}>

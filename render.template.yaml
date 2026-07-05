@@ -1,0 +1,89 @@
+# render.template.yaml — blueprint for deploying a NEW Atlas instance
+# (e.g. Lacy's). Copy over render.yaml in your fork, replace every
+# <PLACEHOLDER>, then "New → Blueprint" in Render pointing at the fork.
+# Full walkthrough: SETUP.md
+
+services:
+  - type: web
+    name: atlas-api-<INSTANCE>          # e.g. atlas-api-lacy
+    env: node
+    region: oregon
+    plan: standard
+    buildCommand: npm install && npm run build:server
+    startCommand: npm run start:server
+    envVars:
+      # ── Identity (personalizes every assistant prompt) ──
+      - key: USER_NAME
+        value: <FULL NAME>               # e.g. Lacy Smith
+      - key: USER_BIO
+        value: <ONE SENTENCE ABOUT THE USER>  # e.g. "Lacy Smith is a ... in Denver, CO."
+      - key: USER_SIGNOFF
+        value: Best                      # email sign-off word
+      - key: USER_TZ
+        value: America/Denver            # IANA timezone
+      - key: ASSISTANT_NAME
+        value: Adler                     # rename the assistant if you like
+
+      # ── Core ──
+      - key: NODE_ENV
+        value: production
+      - key: NODE_OPTIONS
+        value: --dns-result-order=ipv4first --max-old-space-size=1024
+      - key: ANTHROPIC_API_KEY
+        sync: false                      # console.anthropic.com
+      - key: ATLAS_SECRET
+        sync: false                      # any long random string; also set VITE_ATLAS_SECRET below
+      - key: FRONTEND_URL
+        value: https://atlas-dashboard-<INSTANCE>.onrender.com
+      - key: WEBHOOK_URL
+        value: https://atlas-api-<INSTANCE>.onrender.com
+
+      # ── Storage (create a free database at upstash.com) ──
+      - key: UPSTASH_REDIS_REST_URL
+        sync: false
+      - key: UPSTASH_REDIS_REST_TOKEN
+        sync: false
+
+      # ── Telegram (BotFather → /newbot) ──
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+
+      # ── Outlook (Azure app registration; see SETUP.md §4) ──
+      - key: MICROSOFT_CLIENT_ID
+        sync: false
+      - key: MICROSOFT_TENANT_ID
+        sync: false
+      - key: MICROSOFT_CLIENT_SECRET
+        sync: false
+      - key: MICROSOFT_REDIRECT_URI
+        value: https://atlas-api-<INSTANCE>.onrender.com/api/outlook/callback
+
+      # ── Google: Calendar + Gmail (Google Cloud OAuth client; see SETUP.md §5) ──
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_REDIRECT_URI
+        value: https://atlas-api-<INSTANCE>.onrender.com/api/google/callback
+
+      # ── Oura (optional; cloud.ouraring.com/personal-access-tokens) ──
+      - key: OURA_TOKEN
+        sync: false
+
+      # ── Model tiering (optional overrides) ──
+      # MODEL_CHEAP / MODEL_STANDARD / MODEL_CRITICAL
+
+  - type: web
+    name: atlas-dashboard-<INSTANCE>
+    env: static
+    buildCommand: npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_API_URL
+        value: https://atlas-api-<INSTANCE>.onrender.com
+      - key: VITE_ATLAS_SECRET
+        sync: false                      # same value as ATLAS_SECRET
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

@@ -1,6 +1,7 @@
 // server/google.ts — Google Calendar OAuth2 + sync
 
 import { getState, setState } from './state.js';
+import { USER } from './config.js';
 import type { CalEvent } from './state.js';
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
@@ -180,7 +181,7 @@ export async function syncGoogleCalendar(): Promise<void> {
 
     // Server runs in UTC — convert timed events to Denver local time
     const denver = new Intl.DateTimeFormat('en-US', {
-      timeZone: 'America/Denver', hour: 'numeric', minute: 'numeric', day: 'numeric', month: 'numeric', year: 'numeric', hour12: false,
+      timeZone: USER.tz, hour: 'numeric', minute: 'numeric', day: 'numeric', month: 'numeric', year: 'numeric', hour12: false,
     }).formatToParts(startDate).reduce<Record<string, number>>((acc, p) => {
       if (p.type !== 'literal') acc[p.type] = parseInt(p.value, 10);
       return acc;

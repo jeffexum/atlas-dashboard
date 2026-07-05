@@ -555,7 +555,8 @@ export function addTodoFromComm(commId: string): void {
 
 // ── Habits: history-based tracking (Denver-local days) ───────────────────────
 
-const HABIT_TZ = 'America/Denver';
+import { USER } from './config.js';
+const HABIT_TZ = USER.tz;
 const DAY_MS = 86_400_000;
 
 function denverDay(d: Date = new Date()): string {
@@ -665,7 +666,7 @@ export function startReading(id: string): void {
 
 // ── Shopping list ─────────────────────────────────────────────────────────────
 
-export function addShoppingItem(name: string, category: ShoppingCategory, addedBy = 'Jeff'): ShoppingItem {
+export function addShoppingItem(name: string, category: ShoppingCategory, addedBy = USER.firstName): ShoppingItem {
   const item: ShoppingItem = { id: `sh-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, name, category, done: false, addedBy, addedAt: Date.now() };
   setState({ shopping: [..._state.shopping, item] });
   return item;

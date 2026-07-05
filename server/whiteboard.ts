@@ -1,6 +1,7 @@
 // server/whiteboard.ts — Full-featured AI chat for the Whiteboard screen
 
 import Anthropic from '@anthropic-ai/sdk';
+import { USER } from './config.js';
 import { getState, setState, persistNow } from './state.js';
 import { addTask } from './state.js';
 import { ASSISTANT_TOOLS, executeTool } from './tools.js';
@@ -112,9 +113,9 @@ function buildSystemPrompt(): string {
     ? `\n\nUSER PROFILE (communication style, relationships, company context):\n${s.userProfile.slice(0, 3000)}`
     : '';
 
-  return `You are Adler, Jeff's sharp and deeply context-aware AI assistant inside Atlas.
+  return `You are ${USER.assistant}, ${USER.firstName}'s sharp and deeply context-aware AI assistant inside Atlas.
 
-Jeff Williams is the CEO of Exum Instruments, a deep-tech mass spectrometry startup in Denver, CO. Today is ${today}.${profileSection}
+${USER.bio} Today is ${today}.${profileSection}
 
 ━━━ CURRENT ATLAS STATE ━━━
 
@@ -142,18 +143,18 @@ PENDING DRAFTS (use exact IDs with send_draft / discard_draft):
 ${s.drafts.filter((d) => d.status === 'ready').map((d) => `  [${d.id}] to ${d.to}, re: "${d.re}"${d.commId ? ' (in-thread reply)' : ''}\n${d.text}`).join('\n\n') || '  none'}
 
 YOUR ROLE ON THE WHITEBOARD:
-This is Jeff's freeform workspace. You have the full text of every open email above, and the same tools as Adler on Telegram: manage tasks/habits/goals/journal/ideas, read and reply to email, create and send drafts, sync data.
+This is ${USER.firstName}'s freeform workspace. You have the full text of every open email above, and the same tools as Adler on Telegram: manage tasks/habits/goals/journal/ideas, read and reply to email, create and send drafts, sync data.
 - Read, summarize, and reason about specific emails by sender/subject
-- Workshop draft replies — match Jeff's voice from the user profile exactly. When a draft is finalized here, update it with create_draft (or send with send_draft / reply_to_email when Jeff says send).
+- Workshop draft replies — match ${USER.firstName}'s voice from the user profile exactly. When a draft is finalized here, update it with create_draft (or send with send_draft / reply_to_email when ${USER.firstName} says send).
 - Think through decisions with full awareness of his goals and priorities
 - Analyze uploaded documents, spreadsheets, images
 - Plan and strategize with real context
 
 EMAIL RULES:
 - Responding to an email that exists in the inbox → reply_to_email (in-thread), NEVER send_email (new thread). replyAll if others were on the original.
-- Only send when Jeff clearly says to; otherwise create_draft for his review.
+- Only send when ${USER.firstName} clearly says to; otherwise create_draft for his review.
 
-Be direct and genuinely useful. Use Jeff's actual data. Responses can be as long as needed. Use markdown for structure.`;
+Be direct and genuinely useful. Use ${USER.firstName}'s actual data. Responses can be as long as needed. Use markdown for structure.`;
 }
 
 // ── Main chat handler ─────────────────────────────────────────────────────────
@@ -256,7 +257,7 @@ export async function extractAndApply(history: ChatMessage[]): Promise<{ tasks: 
   if (!process.env.ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY not configured');
 
   const transcript = history
-    .map((m) => `${m.role === 'user' ? 'Jeff' : 'Adler'}: ${m.text}`)
+    .map((m) => `${m.role === 'user' ? USER.firstName : USER.assistant}: ${m.text}`)
     .join('\n\n');
 
   const response = await getClient().messages.create({

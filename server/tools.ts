@@ -15,7 +15,7 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   // ── Tasks ──
   {
     name: 'add_task',
-    description: 'Add a new task to the dashboard. Set dueDate when Jeff mentions a deadline.',
+    description: 'Add a new task to the dashboard. Set dueDate when the user mentions a deadline.',
     input_schema: { type: 'object' as const, properties: { title: { type: 'string' }, priority: { type: 'string', enum: ['p1', 'p2', 'p3'] }, category: { type: 'string', enum: ['Work', 'Personal', 'Health'] }, column: { type: 'string', enum: ['today', 'upcoming'] }, dueDate: { type: 'string', description: 'Optional due date, YYYY-MM-DD' } }, required: ['title', 'priority', 'category'] },
   },
   {
@@ -83,7 +83,7 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'create_draft',
-    description: 'Create an email draft on the dashboard for Jeff to review before sending (does NOT send). Write it in Jeff\'s voice per the user profile. Link it to an inbox email with commId so it sends as an in-thread reply.',
+    description: 'Create an email draft on the dashboard for the user to review before sending (does NOT send). Write it in the user\'s voice per the profile. Link it to an inbox email with commId so it sends as an in-thread reply.',
     input_schema: { type: 'object' as const, properties: { commId: { type: 'string', description: 'Inbox email this replies to (omit for a fresh email)' }, to: { type: 'string' }, subject: { type: 'string' }, body: { type: 'string' } }, required: ['to', 'subject', 'body'] },
   },
   {
@@ -98,7 +98,7 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'workshop_draft',
-    description: 'Pull a draft into the Whiteboard as a new session so Jeff can workshop it there. Use when a draft needs more work than a quick edit.',
+    description: 'Pull a draft into the Whiteboard as a new session so the user can workshop it there. Use when a draft needs more work than a quick edit.',
     input_schema: { type: 'object' as const, properties: { draftId: { type: 'string' } }, required: ['draftId'] },
   },
   {
@@ -140,7 +140,7 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   },
   {
     name: 'learn_style',
-    description: 'Re-analyze Jeff\'s sent email to refresh the user profile of his communication and management style. Run when Jeff says drafts don\'t sound like him.',
+    description: 'Re-analyze the user\'s sent email to refresh the profile of their communication and management style. Run when the user says drafts don\'t sound like them.',
     input_schema: { type: 'object' as const, properties: {}, required: [] },
   },
   // ── Ideas / journal ──
@@ -276,7 +276,7 @@ export async function executeTool(name: string, input: Record<string, unknown>):
             },
           ],
         });
-        return `Draft pulled into the Whiteboard as session "${`Draft: ${draft.re}`.slice(0, 60)}". Jeff can open it via Whiteboard → Sessions.`;
+        return `Draft pulled into the Whiteboard as session "${`Draft: ${draft.re}`.slice(0, 60)}". Open it via Whiteboard → Sessions.`;
       }
       case 'snooze_comm':
         state.snoozeComm(input.commId as string);

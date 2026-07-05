@@ -1,6 +1,7 @@
 // server/telegram.ts — Telegram bot in webhook mode
 
 import TelegramBot from 'node-telegram-bot-api';
+import { USER } from './config.js';
 import { runAgent } from './agents.js';
 import { runAdler, runPartnerAdler } from './adler.js';
 import { getState } from './state.js';
@@ -78,7 +79,7 @@ export function createTelegramBot(webhookUrl: string): TelegramBot {
     // ── Role resolution ──
     // Bootstrap: the very first chat ever seen becomes the owner (Jeff).
     if (Object.keys(tgUsers).length === 0) {
-      tgUsers[String(chatId)] = { role: 'owner', name: 'Jeff' };
+      tgUsers[String(chatId)] = { role: 'owner', name: USER.firstName };
       await saveTgUsers();
     }
     const user = tgUsers[String(chatId)];
@@ -87,7 +88,7 @@ export function createTelegramBot(webhookUrl: string): TelegramBot {
     if (!user) {
       await bot.sendMessage(
         chatId,
-        `This is a private assistant. Ask Jeff to approve you — he needs to send:\n\n/approve ${chatId} YourName`
+        `This is a private assistant. Ask ${USER.firstName} to approve you — they need to send:\n\n/approve ${chatId} YourName`
       );
       return;
     }
@@ -103,7 +104,7 @@ export function createTelegramBot(webhookUrl: string): TelegramBot {
       tgUsers[id] = { role: 'partner', name };
       await saveTgUsers();
       await bot.sendMessage(chatId, `✅ ${name} approved. They can now talk to their own scoped Adler — schedule, tasks, habits, notes. No email access.`);
-      bot.sendMessage(Number(id), `🎉 Jeff approved you! I'm Adler, Jeff's assistant. You can ask me about his day or schedule, add things to his to-do list or calendar, or leave him a note. What can I do for you, ${name}?`).catch(() => {});
+      bot.sendMessage(Number(id), `🎉 ${USER.firstName} approved you! I'm ${USER.assistant}, ${USER.firstName}'s assistant. You can ask me about his day or schedule, add things to his to-do list or calendar, or leave him a note. What can I do for you, ${name}?`).catch(() => {});
       return;
     }
     if (user.role === 'owner' && text === '/users') {
@@ -217,7 +218,7 @@ export async function sendMorningBriefing(bot: TelegramBot, chatId: number): Pro
     .sort((a, b) => a.start - b.start)[0];
 
   const lines = [
-    `☀️ *Good morning, Jeff!* Here's your briefing for today:`,
+    `☀️ *Good morning, ${USER.firstName}!* Here's your briefing for today:`,
     ``,
     `📋 *Tasks:* ${todayTasks.length} today, ${p1Tasks.length} urgent`,
     p1Tasks.length > 0 ? p1Tasks.map((t) => `  🔴 ${t.title}`).join('\n') : '',

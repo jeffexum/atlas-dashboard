@@ -1,6 +1,7 @@
 // server/agents.ts — Four AI agents using @anthropic-ai/sdk
 
 import Anthropic from '@anthropic-ai/sdk';
+import { USER } from './config.js';
 import { MODELS } from './models.js';
 import type { ServerState } from './state.js';
 import * as state from './state.js';
@@ -356,7 +357,7 @@ export async function runAgent(input: {
   const systemPrompt = `You are ${meta.name}, the ${meta.role} agent in Atlas — a personal life dashboard.
 You have access to the user's current state (tasks, habits, goals, inbox, calendar, etc.)
 Current date: Monday June 29, 2026.
-User: Jeff
+User: ${USER.firstName}
 
 Your personality: ${meta.personality}
 

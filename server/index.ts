@@ -1,6 +1,7 @@
 // server/index.ts — Express server for Atlas dashboard
 
 import 'dotenv/config';
+import { USER } from './config.js';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import { getState, setState, persistNow, addHabit, deleteHabit, toggleHabitToday, recomputeAllHabits, dismissComm, snoozeComm, addShoppingItem, toggleShoppingItem, deleteShoppingItem, clearBoughtShoppingItems } from './state.js';
@@ -272,7 +273,7 @@ app.post('/api/drafts/:id/refine', async (req: Request, res: Response) => {
   const Anthropic = (await import('@anthropic-ai/sdk')).default;
   const client = new Anthropic({ apiKey });
 
-  const prompt = `You are revising an email draft written on behalf of Jeff Williams, CEO of Exum Instruments.${s.userProfile ? `\n\nJEFF'S STYLE PROFILE:\n${s.userProfile.slice(0, 3000)}` : ''}
+  const prompt = `You are revising an email draft written on behalf of ${USER.name}. ${USER.bio}${s.userProfile ? `\n\nSTYLE PROFILE:\n${s.userProfile.slice(0, 3000)}` : ''}
 ${comm ? `\nORIGINAL EMAIL BEING REPLIED TO (from ${comm.who}, "${comm.subject}"):\n${(comm.body || comm.preview).slice(0, 3000)}\n` : ''}
 CURRENT DRAFT:
 ${draft.text}
@@ -280,7 +281,7 @@ ${draft.text}
 JEFF'S REVISION INSTRUCTION:
 ${instruction}
 
-Rewrite the draft applying the instruction while keeping Jeff's voice. Keep the format: greeting line, blank line, short body, blank line, "Cheers,\nJeff". Return ONLY the revised reply text.`;
+Rewrite the draft applying the instruction while keeping ${USER.firstName}'s voice. Keep the format: greeting line, blank line, short body, blank line, "${USER.signoff},\n${USER.firstName}". Return ONLY the revised reply text.`;
 
   try {
     const response = await createCritical(client, {
@@ -313,7 +314,7 @@ app.post('/api/drafts/reply', async (req: Request, res: Response) => {
     ? `\n\nUSER PROFILE (communication style, company context):\n${s.userProfile}`
     : '';
 
-  const prompt = `You are drafting an email reply on behalf of Jeff Williams, CEO of Exum Instruments.${profileSection}
+  const prompt = `You are drafting an email reply on behalf of ${USER.name}. ${USER.bio}${profileSection}
 
 EMAIL TO REPLY TO:
 From: ${comm.who}
@@ -321,15 +322,15 @@ Subject: ${comm.subject}
 
 ${(comm.body || comm.preview).slice(0, 4000)}
 
-Write a reply that matches Jeff's communication and management style from the profile exactly — short, casual, direct. 1-4 sentences maximum unless the email genuinely requires more.
+Write a reply that matches ${USER.firstName}'s communication and management style from the profile exactly — short, casual, direct. 1-4 sentences maximum unless the email genuinely requires more.
 
 FORMAT (exactly this structure, with blank lines between parts):
 Greeting line (e.g. "Hi Mike," or just the first name)
 
 Body — one or two short paragraphs
 
-Cheers,
-Jeff
+${USER.signoff},
+${USER.firstName}
 
 No subject line. Return only the reply text.`;
 
@@ -339,7 +340,7 @@ No subject line. Return only the reply text.`;
   });
 
   const textBlock = response.content.find((b) => b.type === 'text');
-  const text = textBlock?.type === 'text' ? textBlock.text : `Hi ${comm.who.split(' ')[0]}, thanks for reaching out. Cheers, Jeff`;
+  const text = textBlock?.type === 'text' ? textBlock.text : `Hi ${comm.who.split(' ')[0]}, thanks for reaching out. ${USER.signoff}, ${USER.firstName}`;
 
   const draft = {
     id: `d-${Date.now()}`,
@@ -401,7 +402,7 @@ app.post('/api/shopping', async (req: Request, res: Response) => {
   const { name, category, addedBy } = req.body as { name: string; category?: string; addedBy?: string };
   if (!name?.trim()) { res.status(400).json({ error: 'name required' }); return; }
   const cat = (['Groceries', 'House', 'Misc'].includes(category || '') ? category : 'Misc') as 'Groceries' | 'House' | 'Misc';
-  const item = addShoppingItem(name.trim(), cat, addedBy || 'Jeff');
+  const item = addShoppingItem(name.trim(), cat, addedBy || USER.firstName);
   await persistNow();
   res.json({ ok: true, item });
 });
@@ -647,7 +648,7 @@ setInterval(() => recomputeAllHabits(), 60 * 60_000);
 
 setInterval(() => {
   const now = new Date();
-  const denverHour = parseInt(now.toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: 'America/Denver' }), 10);
+  const denverHour = parseInt(now.toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: USER.tz }), 10);
   if (denverHour === 7 && now.getMinutes() === 0) {
     generateBriefing();
     if (bot) activeChatIds.forEach((chatId) => sendMorningBriefing(bot!, chatId));

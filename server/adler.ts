@@ -1,6 +1,7 @@
 // server/adler.ts — Adler, your personal coach agent
 
 import Anthropic from '@anthropic-ai/sdk';
+import { USER } from './config.js';
 import { getState, setState, persistNow } from './state.js';
 import { ASSISTANT_TOOLS, executeTool } from './tools.js';
 import { MODELS } from './models.js';
@@ -39,13 +40,13 @@ RULES:
 
 EMAIL RULES (important):
 - When responding to an email that exists in the inbox, ALWAYS use reply_to_email (in-thread) — never send_email, which starts a new thread. Use replyAll when others were on the original.
-- Match Jeff's voice exactly — see the USER PROFILE section for his communication and management style. Short, casual, direct, "Cheers, Jeff" sign-off.
-- For anything consequential, prefer create_draft so Jeff can review on the dashboard. Send directly only when Jeff explicitly says to send.
+- Match ${USER.firstName}'s voice exactly — see the USER PROFILE section for their communication and management style, including the "${USER.signoff}, ${USER.firstName}" sign-off.
+- For anything consequential, prefer create_draft so ${USER.firstName} can review on the dashboard. Send directly only when ${USER.firstName} explicitly says to send.
 - If a draft needs deeper work, use workshop_draft to pull it into the Whiteboard.
 
 DUE DATES & SCHEDULING:
-- Tasks can carry due dates. When Jeff mentions a deadline, set dueDate on the task.
-- When a task is due within 2 days (or overdue) and has no matching calendar event, proactively suggest scheduling it: offer 1-2 SPECIFIC time slots from FREE TIME SLOTS (never invent slots). If Jeff picks one, add_calendar_event immediately.
+- Tasks can carry due dates. When ${USER.firstName} mentions a deadline, set dueDate on the task.
+- When a task is due within 2 days (or overdue) and has no matching calendar event, proactively suggest scheduling it: offer 1-2 SPECIFIC time slots from FREE TIME SLOTS (never invent slots). If ${USER.firstName} picks one, add_calendar_event immediately.
 
 CONTENT LIBRARY (rotate these — connect them to what's relevant in their dashboard):
 - "The Courage to Be Disliked" — Adlerian psychology, directly relevant to your namesake
@@ -63,7 +64,7 @@ function buildContext(): string {
   const s = getState();
   const now = new Date();
   // Server runs in UTC — everything time-related must be Denver local
-  const TZ = 'America/Denver';
+  const TZ = USER.tz;
   const hour = parseInt(now.toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: TZ }), 10);
   const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: TZ });
   const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: TZ });
@@ -158,12 +159,12 @@ FREE TIME SLOTS (≥1h, 8am–6pm, both calendars considered):
 ${gapLines.join('\n') || '  none in the next 3 days'}
 
 SHOPPING LIST (use exact IDs for check_shopping_item / remove_shopping_item):
-${s.shopping.filter((i) => !i.done).map((i) => `  [${i.id}] ${i.category}: ${i.name}${i.addedBy && i.addedBy !== 'Jeff' ? ` (added by ${i.addedBy})` : ''}`).join('\n') || '  empty'}
+${s.shopping.filter((i) => !i.done).map((i) => `  [${i.id}] ${i.category}: ${i.name}${i.addedBy && i.addedBy !== USER.firstName ? ` (added by ${i.addedBy})` : ''}`).join('\n') || '  empty'}
 
 HEALTH — Oura Ring, last 3 days (most recent last):
 ${s.health.slice(-3).map((h) => `  ${h.date}: sleep ${h.sleepHours ?? '?'}h (score ${h.sleepScore ?? '?'}, deep ${h.deepHours ?? '?'}h, REM ${h.remHours ?? '?'}h), readiness ${h.readinessScore ?? '?'}, HRV ${h.hrv ?? '?'}, resting HR ${h.restingHR ?? '?'}, steps ${h.steps ?? '?'}`).join('\n') || '  no data synced'}
 
-USER PROFILE — Jeff's communication & management style (match this in every draft):
+USER PROFILE — ${USER.firstName}'s communication & management style (match this in every draft):
 ${s.userProfile ? s.userProfile.slice(0, 3000) : '  (not learned yet — run learn_style)'}
 
 GOALS (use exact IDs for update_goal):
@@ -264,17 +265,17 @@ export async function runAdler(userMessage: string): Promise<string> {
 const PARTNER_TOOLS: Anthropic.Tool[] = [
   {
     name: 'add_task',
-    description: "Add a task to Jeff's to-do list",
+    description: "Add a task to the user's to-do list",
     input_schema: { type: 'object' as const, properties: { title: { type: 'string' }, priority: { type: 'string', enum: ['p1', 'p2', 'p3'] } }, required: ['title'] },
   },
   {
     name: 'add_calendar_event',
-    description: "Add an event to Jeff's Atlas calendar",
+    description: "Add an event to the user's Atlas calendar",
     input_schema: { type: 'object' as const, properties: { title: { type: 'string' }, start: { type: 'number', description: 'Start hour as decimal (e.g. 18.5 = 6:30pm)' }, duration: { type: 'number' }, date: { type: 'number', description: 'Day of month' } }, required: ['title', 'start', 'duration', 'date'] },
   },
   {
     name: 'leave_note',
-    description: 'Leave a note for Jeff — his Adler will surface it in his briefing and conversations',
+    description: 'Leave a note for the user — their assistant will surface it in briefings and conversations',
     input_schema: { type: 'object' as const, properties: { note: { type: 'string' } }, required: ['note'] },
   },
 ];
@@ -282,7 +283,7 @@ const PARTNER_TOOLS: Anthropic.Tool[] = [
 function buildPartnerContext(): string {
   const s = getState();
   const now = new Date();
-  const TZ = 'America/Denver';
+  const TZ = USER.tz;
   const timeStr = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: TZ });
   const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: TZ });
   const today = parseInt(now.toLocaleDateString('en-US', { day: 'numeric', timeZone: TZ }), 10);
@@ -317,17 +318,17 @@ ${s.adlerNotes['partner_notes'] || '  none'}`;
 export async function runPartnerAdler(userMessage: string, partnerName: string): Promise<string> {
   if (!process.env.ANTHROPIC_API_KEY) return 'ANTHROPIC_API_KEY not configured.';
 
-  const system = `You are Adler, Jeff Williams' personal assistant. Right now you are talking to ${partnerName}, Jeff's partner — a warm, trusted person in his life.
+  const system = `You are ${USER.assistant}, ${USER.name}'s personal assistant. Right now you are talking to ${partnerName}, ${USER.firstName}'s partner — a warm, trusted person in their life.
 
 WHAT YOU CAN DO FOR ${partnerName.toUpperCase()}:
-- Answer questions about Jeff's day, schedule (work and personal calendars), tasks, and habit streaks
+- Answer questions about ${USER.firstName}'s day, schedule (work and personal calendars), tasks, and habit streaks
 - Add tasks to his to-do list (tag ideas: use the add_task tool; they'll show as "From ${partnerName}")
 - Add events to his calendar
-- Leave notes that Jeff's briefing will surface
+- Leave notes that ${USER.firstName}'s briefing will surface
 
 PRIVACY RULES (firm):
-- Never share the contents, senders, or subjects of Jeff's emails — you may only mention how many are open
-- Never share Jeff's drafts, his communication-style profile, or private memory
+- Never share the contents, senders, or subjects of ${USER.firstName}'s emails — you may only mention how many are open
+- Never share ${USER.firstName}'s drafts, their communication-style profile, or private memory
 - If asked for something outside your scope, say warmly that it's outside what you can share
 
 TONE: friendly and helpful, like a family assistant. Keep replies short — a few sentences.
@@ -366,10 +367,10 @@ ${buildPartnerContext()}`;
         result = await executeTool('add_calendar_event', { ...input, category: 'Personal' });
       } else if (block.name === 'leave_note') {
         const s = getState();
-        const stamp = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Denver' });
+        const stamp = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: USER.tz });
         const existing = s.adlerNotes['partner_notes'] || '';
         setState({ adlerNotes: { ...s.adlerNotes, partner_notes: `${existing}\n[${stamp}] ${partnerName}: ${input.note}`.trim() } });
-        result = 'Note saved — Jeff\'s Adler will surface it.';
+        result = `Note saved — ${USER.firstName}'s ${USER.assistant} will surface it.`;
       }
       toolResults.push({ type: 'tool_result', tool_use_id: block.id, content: result });
     }
@@ -451,13 +452,13 @@ export async function generateBriefing(): Promise<void> {
   if (!process.env.ANTHROPIC_API_KEY) return;
 
   const now = new Date();
-  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'America/Denver' });
+  const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: USER.tz });
 
-  const prompt = `Today is ${dateStr}. You are Adler. Below is the complete current state of Jeff's world — inbox with email excerpts, pending drafts, both calendars (work Outlook + personal Gmail), tasks, habits, goals, your memory of him.
+  const prompt = `Today is ${dateStr}. You are Adler. Below is the complete current state of ${USER.firstName}'s world — inbox with email excerpts, pending drafts, both calendars (work Outlook + personal Gmail), tasks, habits, goals, your memory of him.
 
 ${buildContext()}
 
-Review everything above like a chief of staff and write Jeff's daily briefing — the first thing he sees on his dashboard.
+Review everything above like a chief of staff and write ${USER.firstName}'s daily briefing — the first thing he sees on his dashboard.
 
 The briefing paragraph (3-6 sentences, Adler's voice: direct, warm, zero fluff):
 - Which emails actually need a reply from him today, by name — and which can wait

@@ -10,6 +10,7 @@ import { adlerProactiveCheck, generateBriefing, runPartnerAdler } from './adler.
 import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, replyToEmail, fetchEmailBody } from './outlook.js';
 import { getGoogleAuthUrl, exchangeGoogleCode, syncGoogleCalendar, isGoogleAuthenticated, loadGoogleToken } from './google.js';
 import { syncOura, isOuraConfigured } from './oura.js';
+import { isGmailConnected, syncGmail, replyGmail, fetchGmailBody } from './gmail.js';
 import { chat, extractAndApply, saveSession, getSessions } from './whiteboard.js';
 import { createCritical } from './models.js';
 import type { ChatMessage } from './whiteboard.js';
@@ -197,9 +198,9 @@ app.post('/api/comms/:id/snooze', async (req: Request, res: Response) => {
 });
 
 app.get('/api/comms/:id/body', async (req: Request, res: Response) => {
-  if (!isAuthenticated()) { res.status(401).json({ error: 'Not authenticated' }); return; }
   try {
-    const body = await fetchEmailBody(req.params.id as string);
+    const id = req.params.id as string;
+    const body = id.startsWith('gm-') ? await fetchGmailBody(id) : await fetchEmailBody(id);
     res.json({ body });
   } catch (err) {
     res.status(500).json({ error: (err as Error).message });
@@ -232,10 +233,12 @@ app.post('/api/drafts/send', async (req: Request, res: Response) => {
   const s = getState();
   const draft = s.drafts.find((d) => d.id === draftId);
   if (!draft) { res.status(404).json({ error: 'draft not found' }); return; }
-  if (!isAuthenticated()) { res.status(401).json({ error: 'Not authenticated', authUrl: '/api/outlook/auth' }); return; }
+  if (!isAuthenticated() && !isGmailConnected()) { res.status(401).json({ error: 'No mail account connected', authUrl: '/api/outlook/auth' }); return; }
   try {
     // Drafts linked to an inbox email send as in-thread replies, not new threads
-    if (draft.commId) {
+    if (draft.commId?.startsWith('gm-')) {
+      await replyGmail(draft.commId, draft.text);
+    } else if (draft.commId) {
       await replyToEmail(draft.commId, draft.text);
     } else {
       await sendEmail(draft.to, draft.re, draft.text);
@@ -372,6 +375,7 @@ app.get('/api/google/callback', async (req: Request, res: Response) => {
   try {
     await exchangeGoogleCode(code);
     await syncGoogleCalendar();
+    if (isGmailConnected()) await syncGmail().catch((e) => console.warn('Gmail first sync failed:', (e as Error).message));
     res.redirect(`${FRONTEND_URL}?google=connected`);
   } catch (err) {
     console.error('Google OAuth error:', err);
@@ -425,6 +429,22 @@ app.post('/api/shopping/clear-bought', async (_req: Request, res: Response) => {
   res.json({ ok: true });
 });
 
+// ── Gmail ─────────────────────────────────────────────────────────────────────
+
+app.get('/api/gmail/status', (_req: Request, res: Response) => {
+  res.json({ connected: isGmailConnected() });
+});
+
+app.get('/api/gmail/sync', async (_req: Request, res: Response) => {
+  if (!isGmailConnected()) { res.status(401).json({ error: 'Gmail not connected — re-connect Google', authUrl: '/api/google/auth' }); return; }
+  try {
+    await syncGmail();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 // ── Sync everything ───────────────────────────────────────────────────────────
 
 app.post('/api/sync/all', async (_req: Request, res: Response) => {
@@ -437,6 +457,10 @@ app.post('/api/sync/all', async (_req: Request, res: Response) => {
     try { await syncGoogleCalendar(); results.google = 'ok'; }
     catch (err) { results.google = (err as Error).message; }
   } else results.google = 'not connected';
+  if (isGmailConnected()) {
+    try { await syncGmail(); results.gmail = 'ok'; }
+    catch (err) { results.gmail = (err as Error).message; }
+  } else results.gmail = 'not connected';
   if (isOuraConfigured()) {
     try { await syncOura(); results.oura = 'ok'; }
     catch (err) { results.oura = (err as Error).message; }

@@ -17,6 +17,7 @@ interface GoogleToken {
   refresh_token?: string;
   expires_at: number;
   token_type: string;
+  scope?: string; // space-separated granted scopes
 }
 
 let _token: GoogleToken | null = null;
@@ -61,7 +62,11 @@ export function getGoogleAuthUrl(): string {
     client_id: GOOGLE_CLIENT_ID,
     redirect_uri: GOOGLE_REDIRECT_URI,
     response_type: 'code',
-    scope: 'https://www.googleapis.com/auth/calendar.readonly',
+    scope: [
+      'https://www.googleapis.com/auth/calendar.readonly',
+      'https://www.googleapis.com/auth/gmail.readonly',
+      'https://www.googleapis.com/auth/gmail.send',
+    ].join(' '),
     access_type: 'offline',
     prompt: 'consent',
   });
@@ -90,14 +95,24 @@ export async function exchangeGoogleCode(code: string): Promise<void> {
     refresh_token?: string;
     expires_in: number;
     token_type: string;
+    scope?: string;
   };
   await saveToken({
     access_token: data.access_token,
     refresh_token: data.refresh_token,
     expires_at: Date.now() + (data.expires_in - 60) * 1000,
     token_type: data.token_type,
+    scope: data.scope,
   });
   console.log('[google] OAuth token obtained');
+}
+
+export function hasGmailScope(): boolean {
+  return !!_token?.scope?.includes('gmail.readonly');
+}
+
+export async function getGoogleAccessToken(): Promise<string> {
+  return getAccessToken();
 }
 
 async function getAccessToken(): Promise<string> {

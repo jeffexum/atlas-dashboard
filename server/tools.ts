@@ -9,6 +9,7 @@ import {
   learnUserProfile, fetchEmailBody,
 } from './outlook.js';
 import { syncGoogleCalendar, isGoogleAuthenticated } from './google.js';
+import { isGmailConnected, syncGmail, replyGmail, fetchGmailBody } from './gmail.js';
 import { syncOura, isOuraConfigured } from './oura.js';
 
 export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
@@ -215,14 +216,22 @@ export async function executeTool(name: string, input: Record<string, unknown>):
         return 'Event added.';
       }
       case 'read_email': {
-        if (!isAuthenticated()) return 'Error: Outlook not connected.';
-        const body = await fetchEmailBody(input.commId as string);
+        const commId = input.commId as string;
+        const body = commId.startsWith('gm-')
+          ? await fetchGmailBody(commId)
+          : await fetchEmailBody(commId);
         return body.slice(0, 8000);
       }
       case 'reply_to_email': {
-        if (!isAuthenticated()) return 'Error: Outlook not connected.';
-        const comm = s.comms.find((c) => c.id === input.commId);
-        await replyToEmail(input.commId as string, input.body as string, !!input.replyAll);
+        const commId = input.commId as string;
+        const comm = s.comms.find((c) => c.id === commId);
+        if (commId.startsWith('gm-')) {
+          if (!isGmailConnected()) return 'Error: Gmail not connected.';
+          await replyGmail(commId, input.body as string, !!input.replyAll);
+        } else {
+          if (!isAuthenticated()) return 'Error: Outlook not connected.';
+          await replyToEmail(commId, input.body as string, !!input.replyAll);
+        }
         return `Reply sent in-thread${input.replyAll ? ' (reply-all)' : ''} to ${comm?.who || 'recipient'}.`;
       }
       case 'send_email':
@@ -243,11 +252,13 @@ export async function executeTool(name: string, input: Record<string, unknown>):
         return `Draft ${draft.id} created${draft.commId ? ' (linked to thread — will send as reply)' : ''}.`;
       }
       case 'send_draft': {
-        if (!isAuthenticated()) return 'Error: Outlook not connected.';
+        if (!isAuthenticated() && !isGmailConnected()) return 'Error: no mail account connected.';
         const draft = s.drafts.find((d) => d.id === input.draftId);
         if (!draft) return `Error: draft ${input.draftId} not found.`;
         if (draft.status === 'sent') return 'Error: draft already sent.';
-        if (draft.commId) {
+        if (draft.commId?.startsWith('gm-')) {
+          await replyGmail(draft.commId, draft.text);
+        } else if (draft.commId) {
           await replyToEmail(draft.commId, draft.text);
         } else {
           await sendEmail(draft.to, draft.re, draft.text);
@@ -311,6 +322,10 @@ export async function executeTool(name: string, input: Record<string, unknown>):
           await syncGoogleCalendar();
           parts.push('Google calendar synced');
         } else parts.push('Google not connected');
+        if (isGmailConnected()) {
+          await syncGmail();
+          parts.push('Gmail synced');
+        }
         if (isOuraConfigured()) {
           await syncOura();
           parts.push('Oura health data synced');

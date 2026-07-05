@@ -289,7 +289,7 @@ interface GraphEvent {
   bodyPreview?: string;
 }
 
-function fmtRelative(iso?: string): string {
+export function fmtRelative(iso?: string): string {
   if (!iso) return '';
   const d = new Date(iso);
   const now = new Date();
@@ -327,13 +327,13 @@ const AUTOMATED_PATTERNS = [
   /support@.*\.(zendesk|freshdesk|intercom)/i,
 ];
 
-function isAutomated(email: string, subject: string): boolean {
+export function isAutomated(email: string, subject: string): boolean {
   if (AUTOMATED_PATTERNS.some((p) => p.test(email))) return true;
   if (/unsubscribe|notification|automated|auto-generated/i.test(subject)) return true;
   return false;
 }
 
-async function scoreEmailsWithAI(emails: { id: string; from: string; subject: string; preview: string }[]): Promise<Set<string>> {
+export async function scoreEmailsWithAI(emails: { id: string; from: string; subject: string; preview: string }[]): Promise<Set<string>> {
   if (!emails.length || !process.env.ANTHROPIC_API_KEY) return new Set(emails.map((e) => e.id));
   const list = emails.map((e, i) => `${i + 1}. From: ${e.from} | Subject: ${e.subject} | Preview: ${e.preview}`).join('\n');
   const response = await getClient().messages.create({
@@ -440,12 +440,18 @@ export async function syncMail(): Promise<void> {
       };
     });
 
-  // Preserve snoozed/dismissed status across re-syncs so hidden emails stay hidden
-  const priorStatus = new Map(getState().comms.map((c) => [c.id, c.status]));
-  const merged = comms.map((c) => {
-    const prior = priorStatus.get(c.id);
-    return prior && prior !== 'open' ? { ...c, status: prior } : c;
-  });
+  // Preserve snoozed/dismissed status across re-syncs so hidden emails stay hidden,
+  // and keep Gmail comms (gm- prefix) — this sync owns only Outlook messages
+  const priorComms = getState().comms;
+  const priorStatus = new Map(priorComms.map((c) => [c.id, c.status]));
+  const gmailComms = priorComms.filter((c) => c.id.startsWith('gm-'));
+  const merged = [
+    ...gmailComms,
+    ...comms.map((c) => {
+      const prior = priorStatus.get(c.id);
+      return prior && prior !== 'open' ? { ...c, status: prior } : c;
+    }),
+  ];
 
   console.log(`[syncMail] ${inboxMessages.length} fetched → ${candidates.length} unreplied/non-automated → ${merged.length} actionable`);
   setState({ comms: merged });

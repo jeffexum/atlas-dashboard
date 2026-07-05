@@ -70,8 +70,20 @@ export function deleteDelegation(id: string): void {
 
 interface Extracted { what: string; who: string; dueDate?: string; quote?: string }
 
+let _extractInFlight = false;
+
 export async function extractDelegations(): Promise<number> {
   if (!process.env.ANTHROPIC_API_KEY) return 0;
+  if (_extractInFlight) return 0; // boot + sync can race — one scan at a time
+  _extractInFlight = true;
+  try {
+    return await doExtract();
+  } finally {
+    _extractInFlight = false;
+  }
+}
+
+async function doExtract(): Promise<number> {
   const scanned = await loadScanned();
   const s = getState();
   const fresh = s.comms.filter((c) => c.status === 'open' && !scanned.has(c.id)).slice(0, 15);
@@ -115,11 +127,13 @@ Return {"commitments":[]} if none.`,
   await saveScanned();
 
   const existing = new Set(getState().delegations.map((d) => `${d.who}|${d.what}`.toLowerCase()));
+  const existingSources = new Set(getState().delegations.map((d) => `${d.sourceCommId}|${d.who}`.toLowerCase()));
   let added = 0;
   for (const e of extracted) {
     const source = fresh[e.emailIndex];
     if (!e.what || !e.who) continue;
     if (existing.has(`${e.who}|${e.what}`.toLowerCase())) continue;
+    if (source && existingSources.has(`${source.id}|${e.who}`.toLowerCase())) continue; // same person, same email → already tracked
     addDelegation({
       what: e.what,
       who: e.who,

@@ -584,26 +584,51 @@ export async function syncCalendar(): Promise<void> {
     return { year, month, day, hour, minute };
   }
 
-  const calEvents = (data.value || []).map((evt, i) => {
+  const calEvents = (data.value || []).flatMap((evt, i) => {
     const s = parseDt(evt.start?.dateTime || '');
     const e = parseDt(evt.end?.dateTime || '');
     const isAllDay = !!(evt as { isAllDay?: boolean }).isAllDay;
-    const startHour = isAllDay ? 8 : s.hour + s.minute / 60;
+    const color = colorPalette[i % colorPalette.length];
+
+    if (isAllDay) {
+      // Multi-day all-day events: one banner per covered day (Graph end is
+      // exclusive midnight). Capped defensively at 60 days.
+      const out = [];
+      const cur = new Date(s.year, s.month - 1, s.day);
+      const end = new Date(e.year, e.month - 1, e.day);
+      for (let j = 0; cur < end && j < 60; cur.setDate(cur.getDate() + 1), j++) {
+        out.push({
+          id: `${evt.id}${j ? `-d${j}` : ''}`,
+          title: `📅 ${evt.subject || '(no title)'}`,
+          start: 8,
+          duration: 1,
+          color,
+          category: 'Work',
+          date: cur.getDate(),
+          month: cur.getMonth() + 1,
+          year: cur.getFullYear(),
+          source: 'work' as const,
+          allDay: true,
+        });
+      }
+      return out;
+    }
+
+    const startHour = s.hour + s.minute / 60;
     const endHour = e.hour + e.minute / 60;
-    const durationHours = isAllDay ? 1
-      : endHour > startHour ? endHour - startHour : Math.max(0.5, endHour + 24 - startHour);
-    return {
+    const durationHours = endHour > startHour ? endHour - startHour : Math.max(0.5, endHour + 24 - startHour);
+    return [{
       id: evt.id,
-      title: isAllDay ? `📅 ${evt.subject || '(no title)'}` : (evt.subject || '(no title)'),
+      title: evt.subject || '(no title)',
       start: startHour,
       duration: Math.max(0.5, durationHours),
-      color: colorPalette[i % colorPalette.length],
+      color,
       category: 'Work',
       date: s.day,
       month: s.month,
       year: s.year,
       source: 'work' as const,
-    };
+    }];
   });
 
   // Merge: keep Google (personal) events, replace only Outlook ones

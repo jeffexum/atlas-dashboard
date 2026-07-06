@@ -144,7 +144,11 @@ export interface CalEvent {
   duration: number; // decimal hours
   color: string;
   category: string;
-  date: number; // day of month (June 2026), default 29
+  date: number; // day of month
+  month?: number;
+  year?: number;
+  source?: 'work' | 'personal';
+  allDay?: boolean;
 }
 
 export function makeHeatmap(rate: number, name: string): boolean[] {

@@ -112,6 +112,7 @@ export interface CalEvent {
   month?: number;
   year?: number;
   source?: 'work' | 'personal';
+  allDay?: boolean;
 }
 
 // One day of Oura Ring data (all fields optional — synced days may be partial)

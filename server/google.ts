@@ -246,15 +246,39 @@ export async function syncGoogleCalendar(): Promise<void> {
   const data = await res.json() as { items: GCalEvent[] };
   const items = data.items || [];
 
-  const calEvents: CalEvent[] = items.map((item) => {
+  const calEvents: CalEvent[] = items.flatMap((item) => {
     const isAllDay = !item.start.dateTime;
     const startStr = item.start.dateTime || item.start.date || '';
     const endStr = item.end.dateTime || item.end.date || '';
     // Date-only strings parse as UTC midnight; append local time to keep the day right
     const startDate = new Date(isAllDay ? `${startStr}T00:00:00` : startStr);
     const endDate = new Date(isAllDay ? `${endStr}T00:00:00` : endStr);
+    const color = item.colorId ? (COLOR_MAP[item.colorId] || '#4285f4') : '#4285f4';
+    const title = item.summary || '(No title)';
 
-    // Server runs in UTC — convert timed events to Denver local time
+    if (isAllDay) {
+      // Multi-day all-day events: one banner entry per covered day
+      // (Google's end date is exclusive). Capped defensively at 60 days.
+      const out: CalEvent[] = [];
+      for (let d = new Date(startDate), i = 0; d < endDate && i < 60; d.setDate(d.getDate() + 1), i++) {
+        out.push({
+          id: `gcal-${item.id}${i ? `-d${i}` : ''}`,
+          title: `📅 ${title}`,
+          start: 8,
+          duration: 1,
+          color,
+          category: 'Personal',
+          date: d.getDate(),
+          month: d.getMonth() + 1,
+          year: d.getFullYear(),
+          source: 'personal' as const,
+          allDay: true,
+        });
+      }
+      return out;
+    }
+
+    // Server runs in UTC — convert timed events to local wall-clock
     const denver = new Intl.DateTimeFormat('en-US', {
       timeZone: USER.tz, hour: 'numeric', minute: 'numeric', day: 'numeric', month: 'numeric', year: 'numeric', hour12: false,
     }).formatToParts(startDate).reduce<Record<string, number>>((acc, p) => {
@@ -262,23 +286,21 @@ export async function syncGoogleCalendar(): Promise<void> {
       return acc;
     }, {});
 
-    const startHour = isAllDay ? 8 : (denver.hour % 24) + denver.minute / 60;
     const durationMs = endDate.getTime() - startDate.getTime();
-    // All-day events render as a 1h banner at 8am instead of a 24h+ block
-    const duration = isAllDay ? 1 : Math.min(12, Math.max(0.25, durationMs / (1000 * 60 * 60)));
+    const duration = Math.min(12, Math.max(0.25, durationMs / (1000 * 60 * 60)));
 
-    return {
+    return [{
       id: `gcal-${item.id}`,
-      title: isAllDay ? `📅 ${item.summary || '(No title)'}` : (item.summary || '(No title)'),
-      start: startHour,
+      title,
+      start: (denver.hour % 24) + denver.minute / 60,
       duration: Math.round(duration * 4) / 4,
-      color: item.colorId ? (COLOR_MAP[item.colorId] || '#4285f4') : '#4285f4',
+      color,
       category: 'Personal',
-      date: isAllDay ? startDate.getDate() : denver.day,
-      month: isAllDay ? startDate.getMonth() + 1 : denver.month,
-      year: isAllDay ? startDate.getFullYear() : denver.year,
+      date: denver.day,
+      month: denver.month,
+      year: denver.year,
       source: 'personal' as const,
-    };
+    }];
   });
 
   // Merge: keep non-Google events, replace all gcal- events with fresh ones

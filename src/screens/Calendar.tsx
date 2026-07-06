@@ -116,7 +116,10 @@ export default function Calendar() {
   });
 
   const eventDays = new Set(monthEvents.map((e) => e.date));
-  const dayEvents = monthEvents.filter((e) => e.date === selectedDay);
+  const allSelectedDay = monthEvents.filter((e) => e.date === selectedDay);
+  const isAllDayEv = (e: { allDay?: boolean; title: string }) => !!e.allDay || e.title.startsWith('📅');
+  const allDayEvents = allSelectedDay.filter(isAllDayEv);
+  const dayEvents = allSelectedDay.filter((e) => !isAllDayEv(e));
 
   // Personal (Gmail) events render in the right column, everything else (Outlook/manual work) on the left
   const isPersonal = (ev: (typeof calEvents)[number]) =>
@@ -243,7 +246,7 @@ export default function Calendar() {
               color: 'var(--faint)',
             }}
           >
-            {dayEvents.length} event{dayEvents.length !== 1 ? 's' : ''}
+            {allSelectedDay.length} event{allSelectedDay.length !== 1 ? 's' : ''}
           </span>
           <button
             onClick={async () => {
@@ -305,6 +308,25 @@ export default function Calendar() {
             Personal · Gmail
           </div>
         </div>
+
+        {/* All-day band */}
+        {allDayEvents.length > 0 && (
+          <div style={{ display: 'flex', borderBottom: '1px solid var(--line2)', background: 'var(--bg)' }}>
+            <div style={{ width: 52, flexShrink: 0, display: 'flex', alignItems: 'center', paddingLeft: 12, fontFamily: 'JetBrains Mono, monospace', fontSize: 8.5, color: 'var(--faint)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              all day
+            </div>
+            {[false, true].map((personal) => (
+              <div key={String(personal)} style={{ flex: 1, display: 'flex', flexWrap: 'wrap', gap: 4, padding: '5px 8px', borderLeft: personal ? '1px solid var(--line2)' : 'none', minHeight: 26, boxSizing: 'border-box' }}>
+                {allDayEvents.filter((e) => isPersonal(e) === personal).map((e) => (
+                  <span key={e.id} title={e.title.replace('📅 ', '')}
+                    style={{ fontSize: 11, padding: '2px 9px', borderRadius: 10, background: 'var(--accentbg)', color: 'var(--ink2)', border: '1px solid var(--line)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>
+                    {e.title.replace('📅 ', '')}
+                  </span>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Timeline body */}
         <div

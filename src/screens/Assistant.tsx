@@ -221,7 +221,7 @@ export default function Assistant({ setScreen }: Props) {
         style={{
           borderTop: '1px solid var(--line)',
           padding: '12px 16px',
-          background: 'white',
+          background: 'var(--card)',
           display: 'flex',
           gap: 8,
         }}
@@ -240,7 +240,7 @@ export default function Assistant({ setScreen }: Props) {
             outline: 'none',
             fontFamily: 'inherit',
             color: 'var(--ink)',
-            background: 'white',
+            background: 'var(--card)',
           }}
         />
         <button

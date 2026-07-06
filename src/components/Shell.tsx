@@ -81,6 +81,15 @@ const SYNC_API = import.meta.env.VITE_API_URL || '';
 
 export default function Shell({ screen, setScreen }: Props) {
   const [syncing, setSyncing] = useState(false);
+  const [theme, setTheme] = useState<'light' | 'dark'>(
+    (document.documentElement.dataset.theme as 'light' | 'dark') || 'light'
+  );
+  function toggleTheme() {
+    const next = theme === 'light' ? 'dark' : 'light';
+    setTheme(next);
+    document.documentElement.dataset.theme = next;
+    localStorage.setItem('atlas-theme', next);
+  }
 
   async function handleSyncAll() {
     if (syncing) return;
@@ -318,6 +327,18 @@ export default function Shell({ screen, setScreen }: Props) {
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {/* Global sync */}
+          <button
+            onClick={toggleTheme}
+            style={{
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              width: 32, height: 32, padding: 0,
+              background: 'var(--card)', border: '1px solid var(--line)', borderRadius: '50%',
+              fontSize: 14, cursor: 'pointer', color: 'var(--ink2)',
+            }}
+            title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+          >
+            {theme === 'light' ? '🌙' : '☀️'}
+          </button>
           <button
             onClick={handleSyncAll}
             disabled={syncing}

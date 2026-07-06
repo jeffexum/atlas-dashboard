@@ -402,7 +402,7 @@ export default function Whiteboard({ setScreen: _setScreen }: Props) {
                 {msg.text && (
                   <div style={{
                     background: msg.role === 'user' ? 'var(--ink)' : 'var(--card)',
-                    color: msg.role === 'user' ? 'white' : 'var(--ink)',
+                    color: msg.role === 'user' ? 'var(--ink-contrast)' : 'var(--ink)',
                     borderRadius: msg.role === 'user' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
                     padding: '10px 14px',
                     border: msg.role === 'assistant' ? '1px solid var(--line)' : 'none',

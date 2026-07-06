@@ -770,7 +770,7 @@ export default function Calendar() {
                         fontSize: 12.5,
                         fontWeight: day === selectedDay ? 600 : 400,
                         background: day === selectedDay ? 'var(--ink)' : 'transparent',
-                        color: day === selectedDay ? 'white' : 'var(--ink2)',
+                        color: day === selectedDay ? 'var(--ink-contrast)' : 'var(--ink2)',
                         cursor: 'pointer',
                       }}
                     >

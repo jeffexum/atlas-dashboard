@@ -312,9 +312,9 @@ export default function Home({ setScreen }: HomeProps) {
             {weekDays.map((d) => {
               const isToday = d.date === todayDate && d.month === todayMonth;
               return (
-                <div key={d.label} style={{ flex: 1, textAlign: 'center', padding: '6px 4px', borderRadius: '4px', background: isToday ? 'var(--ink)' : 'transparent', color: isToday ? '#fff' : 'var(--ink2)' }}>
+                <div key={d.label} style={{ flex: 1, textAlign: 'center', padding: '6px 4px', borderRadius: '4px', background: isToday ? 'var(--ink)' : 'transparent', color: isToday ? 'var(--ink-contrast)' : 'var(--ink2)' }}>
                   <div style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '13px', fontWeight: isToday ? 600 : 400 }}>{d.date}</div>
-                  <div style={{ fontSize: '10px', color: isToday ? 'rgba(255,255,255,0.7)' : 'var(--faint)', marginTop: '2px' }}>{d.label}</div>
+                  <div style={{ fontSize: '10px', color: isToday ? 'var(--ink-contrast)' : 'var(--faint)', marginTop: '2px' }}>{d.label}</div>
                 </div>
               );
             })}

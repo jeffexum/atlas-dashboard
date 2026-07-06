@@ -319,7 +319,7 @@ export default function Todos({ setScreen: _setScreen }: Props) {
                   padding: '1px 5px',
                   borderRadius: '10px',
                   background: isActive ? 'var(--accent)' : 'var(--line2)',
-                  color: isActive ? '#fff' : 'var(--mut)',
+                  color: isActive ? 'var(--ink-contrast)' : 'var(--mut)',
                 }}>
                   {count}
                 </span>

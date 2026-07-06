@@ -361,7 +361,7 @@ export default function IdeasJournal({ setScreen: _setScreen }: Props) {
               cursor: 'pointer',
               fontFamily: 'inherit',
               background: activeTab === tab ? 'var(--ink)' : 'transparent',
-              color: activeTab === tab ? 'white' : 'var(--mut)',
+              color: activeTab === tab ? 'var(--ink-contrast)' : 'var(--mut)',
             }}
           >
             {tab}

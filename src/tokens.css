@@ -20,3 +20,29 @@
   --radius-chip: 3px;
   --shadow-card: 0 2px 4px rgba(21,25,31,.07);
 }
+
+/* Dark theme — toggled by data-theme on <html>, persisted in localStorage */
+:root { --ink-contrast: #FFFFFF; color-scheme: light; }
+
+[data-theme="dark"] {
+  --bg: #14171C;
+  --card: #1E232B;
+  --ink: #E8ECF1;
+  --ink2: #C3CAD4;
+  --mut: #8B95A3;
+  --faint: #626D7C;
+  --line: #333B47;
+  --line2: #2A313B;
+  --accent: oklch(0.7 0.13 162);
+  --accentbg: oklch(0.28 0.05 162);
+  --blue: oklch(0.68 0.12 245);
+  --warm: oklch(0.68 0.07 255);
+  --violet: oklch(0.64 0.1 262);
+  --ringbg: #2A313B;
+  --p1: oklch(0.66 0.19 27);
+  --p2: oklch(0.75 0.14 75);
+  --p3: #626D7C;
+  --shadow-card: 0 2px 6px rgba(0,0,0,.35);
+  --ink-contrast: #14171C;
+  color-scheme: dark;
+}

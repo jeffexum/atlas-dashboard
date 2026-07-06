@@ -591,13 +591,27 @@ async function _syncMail(): Promise<void> {
     });
 
   // Preserve snoozed/dismissed status across re-syncs so hidden emails stay hidden,
-  // and keep Gmail comms (gm- prefix) — this sync owns only Outlook messages
+  // and keep Gmail comms (gm- prefix) — this sync owns only Outlook messages.
   const st = getState();
   const priorComms = st.comms;
   const overrides = st.commStatusOverrides;
   const gmailComms = priorComms.filter((c) => c.id.startsWith('gm-'));
+
+  // STICKY INCLUSION: once an email has surfaced it stays until dismissed or
+  // replied — the (non-deterministic) scorer only judges messages it hasn't
+  // seen. Without this, borderline emails flicker in/out across syncs and can
+  // unmount the composer mid-edit.
+  const freshIds = new Set(comms.map((c) => c.id));
+  const stillInWindow = new Set(inboxMessages.map((m) => m.id));
+  const carried = priorComms.filter((c) =>
+    !c.id.startsWith('gm-')
+    && !freshIds.has(c.id)
+    && stillInWindow.has(c.id) // gone from the mailbox window (deleted/replied) → drop
+  );
+
   const merged = [
     ...gmailComms,
+    ...carried,
     ...comms.map((c) => {
       const hidden = overrides[c.id];
       return hidden ? { ...c, status: hidden } : c;

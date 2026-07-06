@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { sseUrl, API_URL } from '../auth';
 
+// Draft ids with an in-flight send — SSE merges must not revert these to 'ready'.
+const _pendingSends = new Map<string, { text: string }>();
+
 export interface Task {
   id: string;
   title: string;
@@ -303,6 +306,9 @@ export const useStore = create<StoreState>((set) => ({
   sendDraft: (id) => {
     // Send the exact text on screen (avoids sending a pre-edit stored copy).
     const current = useStore.getState().drafts.find((d) => d.id === id);
+    // Track the in-flight send so an SSE broadcast racing this request can't
+    // resurrect the draft as 'ready' with stale text mid-send.
+    _pendingSends.set(id, { text: current?.text || '' });
     // Optimistically mark sent; server call will confirm or we revert on error
     set((state) => ({
       drafts: state.drafts.map((d) => (d.id === id ? { ...d, status: 'sent' } : d)),
@@ -311,7 +317,9 @@ export const useStore = create<StoreState>((set) => ({
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ draftId: id, text: current?.text }),
+      signal: AbortSignal.timeout(45_000),
     }).then(async (res) => {
+      _pendingSends.delete(id);
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: 'Send failed' }));
         set((state) => ({ drafts: state.drafts.map((d) => (d.id === id ? { ...d, status: 'ready' } : d)) }));
@@ -320,8 +328,9 @@ export const useStore = create<StoreState>((set) => ({
         notifyOk('Reply sent');
       }
     }).catch(() => {
+      _pendingSends.delete(id);
       set((state) => ({ drafts: state.drafts.map((d) => (d.id === id ? { ...d, status: 'ready' } : d)) }));
-      notifyError('Could not send — check your connection');
+      notifyError('Could not send — check your connection or try again');
     });
   },
 
@@ -667,7 +676,12 @@ function sanitizeServerState(s: Record<string, unknown>) {
     ...s,
     tasks: arr(s.tasks),
     comms: arr(s.comms),
-    drafts: arr(s.drafts),
+    drafts: arr(s.drafts).map((d) => {
+      const dd = d as { id: string; status: string; text: string };
+      const pending = _pendingSends.get(dd.id);
+      // Mid-send: keep the on-screen text and 'sent' status until the request settles
+      return pending ? { ...dd, status: 'sent', text: pending.text } : d;
+    }),
     proposedActions: arr(s.proposedActions),
     habits: arr(s.habits),
     goals: arr(s.goals),

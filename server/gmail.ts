@@ -125,8 +125,17 @@ async function _syncGmail(): Promise<void> {
   const st = getState();
   const overrides = st.commStatusOverrides;
   const outlookComms = st.comms.filter((c) => !c.id.startsWith('gm-'));
+
+  // Sticky inclusion (see outlook.ts): previously surfaced Gmail comms stay
+  // as long as the message is still in the fetched window.
+  const freshIds = new Set(comms.map((c) => c.id));
+  const windowIds = new Set(messages.map((m) => `gm-${m.id}`));
+  const carried = st.comms.filter((c) =>
+    c.id.startsWith('gm-') && !freshIds.has(c.id) && windowIds.has(c.id)
+  );
   const merged = [
     ...outlookComms,
+    ...carried,
     ...comms.map((c) => {
       const hidden = overrides[c.id];
       return hidden ? { ...c, status: hidden } : c;

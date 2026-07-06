@@ -465,7 +465,7 @@ EXCLUDE only clear noise: marketing/newsletters, social-media notifications, pro
 
 ${list}
 
-Reply with ONLY the numbers to include, comma-separated. Prefix a number with ! if it is urgent/time-sensitive (e.g. !2,5,!9). Reply "none" if nothing qualifies.`,
+Reply with ONLY the numbers to include, comma-separated. Prefix a number with ! ONLY if it is genuinely time-critical — an explicit deadline in the next ~48h, money movement awaiting approval, or an outage. Most emails are NOT urgent; expect 0-3 ! marks per list (e.g. !2,5,9). Reply "none" if nothing qualifies.`,
         }],
       });
       trackModelCall('email-triage', response.model, response.usage).catch(() => {});

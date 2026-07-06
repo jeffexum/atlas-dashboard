@@ -296,6 +296,17 @@ export async function executeTool(name: string, input: Record<string, unknown>):
         };
         const startLocal = toClock(startHour);
         const endLocal = toClock(startHour + durationMin / 60);
+        // Idempotency guard: the agent loop occasionally repeats a tool call, and
+        // Graph/GCal creates are not idempotent — refuse an exact re-book.
+        {
+          const [, , dd] = dateStr.split('-').map(Number);
+          const dupe = getState().calEvents.find((e) =>
+            e.date === dd
+            && Math.abs(e.start - startHour) < 0.02
+            && e.title.trim().toLowerCase() === String(input.title).trim().toLowerCase()
+            && (calendar === 'personal') === (e.source === 'personal'));
+          if (dupe) return 'Already booked: an identical event (' + dupe.title + ') exists at that time on that calendar — not booking a duplicate.';
+        }
         try {
           if (calendar === 'work') {
             if (!isAuthenticated()) return 'Outlook is not connected — cannot book on the work calendar.';

@@ -394,6 +394,7 @@ type MailSource = 'all' | 'work' | 'personal';
 
 export default function Inbox({ setScreen: _setScreen }: Props) {
   const [source, setSource] = useState<MailSource>('all');
+  const [tab, setTab] = useState<'messages' | 'drafts'>('messages');
   const allComms = useStore((s) => s.comms).filter((c) => c.status !== 'dismissed');
   const dayPlan = useStore((s) => s.dayPlan);
   // Today's email block from the Day Builder: which emails are queued, when, drafts ready?
@@ -422,6 +423,7 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
   const inboxFocusCommId = useStore((s) => s.inboxFocusCommId);
   React.useEffect(() => {
     if (!inboxFocusCommId) return;
+    setTab('messages');
     setSource('all');
     setExpandedId(inboxFocusCommId);
     useStore.setState({ inboxFocusCommId: null });
@@ -542,6 +544,68 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
           </div>
         </div>
 
+        {/* Tabs: Messages | Drafts */}
+        {(() => {
+          const readyCount = drafts.filter((d) => d.status === 'ready').length;
+          return (
+            <div style={{ display: 'flex', gap: 4, marginBottom: 14, borderBottom: '1px solid var(--line)' }}>
+              {([['messages', 'Messages', allComms.length], ['drafts', 'Drafts', readyCount]] as ['messages' | 'drafts', string, number][]).map(([key, label, count]) => (
+                <button key={key} onClick={() => setTab(key)}
+                  style={{
+                    padding: '7px 16px', fontSize: 13, fontWeight: tab === key ? 600 : 400,
+                    border: 'none', borderBottom: tab === key ? '2px solid var(--accent)' : '2px solid transparent',
+                    background: 'transparent', color: tab === key ? 'var(--ink)' : 'var(--mut)',
+                    cursor: 'pointer', fontFamily: 'inherit', marginBottom: -1,
+                  }}>
+                  {label} <span style={{ fontSize: 10.5, fontFamily: "'JetBrains Mono', monospace", color: tab === key ? 'var(--accent)' : 'var(--faint)' }}>{count}</span>
+                </button>
+              ))}
+            </div>
+          );
+        })()}
+
+        {/* ── DRAFTS TAB ── */}
+        {tab === 'drafts' && (() => {
+          const visibleIds = new Set(allComms.map((c) => c.id));
+          const ready = drafts.filter((d) => d.status === 'ready');
+          if (!ready.length) return (
+            <div style={{ ...cardBase, fontSize: 12.5, color: 'var(--mut)', fontStyle: 'italic' }}>
+              No pending drafts. Ask Adler to draft a reply, or hit Draft Reply on a message.
+            </div>
+          );
+          return ready.map((d) => {
+            const linkedVisible = d.commId && visibleIds.has(d.commId);
+            return (
+              <div key={d.id} style={{ ...cardBase, marginBottom: 10 }}>
+                <div style={{ fontSize: 12, color: 'var(--mut)', marginBottom: 6 }}>
+                  <span style={{ color: 'var(--ink2)', fontWeight: 500 }}>To:</span> {d.to}
+                  <span style={{ marginLeft: 10, color: 'var(--ink2)', fontWeight: 500 }}>Re:</span> {d.re}
+                  {d.commId && !linkedVisible && <span style={{ marginLeft: 8, fontSize: 10, color: 'var(--faint)' }}>(replies in-thread — email no longer in view)</span>}
+                </div>
+                <div style={{ fontSize: 12.5, color: 'var(--ink2)', whiteSpace: 'pre-wrap', lineHeight: 1.6, maxHeight: 120, overflowY: 'auto', background: 'var(--bg)', borderRadius: 6, padding: '8px 10px', marginBottom: 8 }}>{d.text}</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  {linkedVisible ? (
+                    <button onClick={() => { setTab('messages'); setSource('all'); setExpandedId(d.commId!); setTimeout(() => document.getElementById(`comm-${d.commId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100); }}
+                      style={{ padding: '4px 14px', fontSize: 12, fontWeight: 600, background: 'var(--accentbg)', color: 'var(--accent)', border: '1px solid var(--accent)', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      ✉ Open email & edit
+                    </button>
+                  ) : (
+                    <button onClick={() => sendOrphanDraft(d.id)} disabled={sendingOrphan === d.id}
+                      style={{ padding: '4px 14px', fontSize: 12, fontWeight: 600, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit', opacity: sendingOrphan === d.id ? 0.6 : 1 }}>
+                      {sendingOrphan === d.id ? 'Sending…' : 'Send'}
+                    </button>
+                  )}
+                  <button onClick={() => discardOrphan(d.id)}
+                    style={{ padding: '4px 12px', fontSize: 12, background: 'transparent', color: 'var(--mut)', border: '1px solid var(--line)', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    Discard
+                  </button>
+                </div>
+              </div>
+            );
+          });
+        })()}
+
+        {tab === 'messages' && <>
         {/* Today's email block (from the Day Builder) */}
         {emailBlock && (
           <div style={{ ...cardBase, marginBottom: 14, borderLeft: '4px solid var(--blue)' }}>
@@ -571,39 +635,6 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
             </div>
           </div>
         )}
-
-        {/* Ready drafts whose email isn't in the visible list (aged out of the
-            sync window, or standalone new-thread drafts like delegation nudges) */}
-        {(() => {
-          const visibleIds = new Set(allComms.map((c) => c.id));
-          const orphans = drafts.filter((d) => d.status === 'ready' && (!d.commId || !visibleIds.has(d.commId)));
-          if (!orphans.length) return null;
-          return (
-            <div style={{ ...cardBase, marginBottom: 14, borderLeft: '4px solid var(--violet)' }}>
-              <div style={{ ...eyebrow, marginBottom: 10 }}>Other ready drafts</div>
-              {orphans.map((d, i) => (
-                <div key={d.id} style={{ borderTop: i ? '1px solid var(--line2)' : 'none', paddingTop: i ? 10 : 0, marginTop: i ? 10 : 0 }}>
-                  <div style={{ fontSize: 12, color: 'var(--mut)', marginBottom: 4 }}>
-                    <span style={{ color: 'var(--ink2)', fontWeight: 500 }}>To:</span> {d.to}
-                    <span style={{ marginLeft: 10, color: 'var(--ink2)', fontWeight: 500 }}>Re:</span> {d.re}
-                    {d.commId && <span style={{ marginLeft: 8, fontSize: 10, color: 'var(--faint)' }}>(replies in-thread — original email no longer in view)</span>}
-                  </div>
-                  <div style={{ fontSize: 12.5, color: 'var(--ink2)', whiteSpace: 'pre-wrap', lineHeight: 1.6, maxHeight: 130, overflowY: 'auto', background: 'var(--bg)', borderRadius: 6, padding: '8px 10px', marginBottom: 8 }}>{d.text}</div>
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => sendOrphanDraft(d.id)} disabled={sendingOrphan === d.id}
-                      style={{ padding: '4px 14px', fontSize: 12, fontWeight: 600, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit', opacity: sendingOrphan === d.id ? 0.6 : 1 }}>
-                      {sendingOrphan === d.id ? 'Sending…' : 'Send'}
-                    </button>
-                    <button onClick={() => discardOrphan(d.id)}
-                      style={{ padding: '4px 12px', fontSize: 12, background: 'transparent', color: 'var(--mut)', border: '1px solid var(--line)', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}>
-                      Discard
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          );
-        })()}
 
         {/* Source toggle: All / Work (Outlook) / Personal (Gmail) */}
         <div style={{ display: 'inline-flex', gap: 2, padding: 2, marginBottom: 14, background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 8 }}>
@@ -744,6 +775,7 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
             </div>
           ))}
         </div>
+        </>}
       </div>
 
     </div>

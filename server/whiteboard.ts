@@ -76,7 +76,7 @@ export interface ChatMessage {
 function buildSystemPrompt(): string {
   const s = getState();
   console.log(`[whiteboard] buildSystemPrompt: ${s.comms.length} comms, ${s.tasks.length} tasks, ${s.calEvents.length} calEvents`);
-  const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  const today = new Date().toLocaleDateString('en-US', { timeZone: USER.tz, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 
   const todayTasks = s.tasks.filter((t) => t.column === 'today' && !t.done);
   const upcomingTasks = s.tasks.filter((t) => t.column === 'upcoming' && !t.done);
@@ -324,7 +324,7 @@ Only include things explicitly decided or committed to. Skip vague intentions.`,
       const s = getState();
       setState({
         journalEntries: [
-          { id: `j-wb-${Date.now()}`, date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }), text: action.body },
+          { id: `j-wb-${Date.now()}`, date: new Date().toLocaleDateString('en-US', { timeZone: USER.tz, month: 'short', day: 'numeric', year: 'numeric' }), text: action.body },
           ...s.journalEntries,
         ],
       });

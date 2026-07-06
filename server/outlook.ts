@@ -5,6 +5,22 @@ import { trackModelCall, audit } from './audit.js';
 import { getState, setState } from './state.js';
 import { MODELS, createCritical } from './models.js';
 import { markOk, markReauth, markError, isInvalidGrant } from './connhealth.js';
+import { USER } from './config.js';
+
+// IANA → Windows timezone names for Graph's Prefer header (common US/EU zones;
+// extend as instances appear in new regions).
+const WINDOWS_TZ: Record<string, string> = {
+  'America/Denver': 'Mountain Standard Time',
+  'America/Los_Angeles': 'Pacific Standard Time',
+  'America/Phoenix': 'US Mountain Standard Time',
+  'America/Chicago': 'Central Standard Time',
+  'America/New_York': 'Eastern Standard Time',
+  'Europe/London': 'GMT Standard Time',
+  'Europe/Berlin': 'W. Europe Standard Time',
+  'Europe/Paris': 'Romance Standard Time',
+  'Asia/Tokyo': 'Tokyo Standard Time',
+  'Australia/Sydney': 'AUS Eastern Standard Time',
+};
 
 let _anthropic: Anthropic | null = null;
 function getClient(): Anthropic {
@@ -370,8 +386,8 @@ export function fmtRelative(iso?: string): string {
   const diffMs = now.getTime() - d.getTime();
   const diffHrs = diffMs / 3600000;
   if (diffHrs < 1) return `${Math.round(diffMs / 60000)}m ago`;
-  if (diffHrs < 24) return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  if (diffHrs < 24) return d.toLocaleTimeString('en-US', { timeZone: USER.tz, hour: 'numeric', minute: '2-digit', hour12: true });
+  return d.toLocaleDateString('en-US', { timeZone: USER.tz, month: 'short', day: 'numeric' });
 }
 
 export async function fetchEmailBody(messageId: string): Promise<string> {
@@ -554,7 +570,7 @@ export async function syncCalendar(): Promise<void> {
 
   const data = await graphGet(
     `/me/calendarview?startDateTime=${encodeURIComponent(start)}&endDateTime=${encodeURIComponent(endStr)}&$top=50&$orderby=start/dateTime&$select=id,subject,start,end,organizer,location,isAllDay,bodyPreview`,
-    { 'Prefer': 'outlook.timezone="Mountain Standard Time"' }
+    { 'Prefer': `outlook.timezone="${WINDOWS_TZ[USER.tz] || 'Mountain Standard Time'}"` }
   ) as { value: GraphEvent[] };
 
   const colorPalette = ['var(--blue)', 'var(--violet)', 'var(--accent)', 'var(--warm)', 'var(--p1)'];

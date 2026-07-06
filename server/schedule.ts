@@ -94,7 +94,7 @@ export function suggestSlots(durationMin = 30, numDays = 5): {
       }
 
       const dateStr = `${y}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      const dayLabel = cursor.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const dayLabel = cursor.toLocaleDateString('en-US', { timeZone: USER.tz, weekday: 'short', month: 'short', day: 'numeric' });
       days.push({ date: dateStr, label: dayLabel, busy, slots });
       for (const s of slots) {
         allScored.push({ ...s, date: dateStr, label2: `${dayLabel}, ${fmtHour(s.startHour)}–${fmtHour(s.startHour + durH)}`, score: slotScore(dayOffset, s.startHour) });

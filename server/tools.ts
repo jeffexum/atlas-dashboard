@@ -561,7 +561,7 @@ export async function executeTool(name: string, input: Record<string, unknown>):
         return 'Idea added.';
       }
       case 'add_journal_entry': {
-        const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const date = new Date().toLocaleDateString('en-US', { timeZone: USER.tz, month: 'short', day: 'numeric', year: 'numeric' });
         setState({ journalEntries: [{ id: `j-${Date.now()}`, date, text: input.text as string }, ...s.journalEntries] });
         return 'Journal entry added.';
       }

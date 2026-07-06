@@ -196,6 +196,8 @@ interface StoreState {
   userProfile: string;
   assistantName: string;
   dayPlan: DayPlan | null;
+  // One-shot handoff: which email the Inbox should expand on next visit
+  inboxFocusCommId: string | null;
   userName: string;
   toast: { kind: 'error' | 'ok'; msg: string } | null;
   sseConnected: boolean;
@@ -251,6 +253,7 @@ export const useStore = create<StoreState>((set) => ({
   userProfile: '',
   assistantName: 'Adler',
   dayPlan: null,
+  inboxFocusCommId: null,
   userName: '',
   toast: null,
   sseConnected: true,

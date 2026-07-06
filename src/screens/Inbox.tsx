@@ -416,6 +416,20 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
   const [syncing, setSyncing] = useState(false);
   const [learning, setLearning] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  // Handoff from other screens (e.g. Waiting On "Draft nudge"): open that email
+  // with its fresh draft, reset the source filter so it's visible, and scroll to it.
+  const inboxFocusCommId = useStore((s) => s.inboxFocusCommId);
+  React.useEffect(() => {
+    if (!inboxFocusCommId) return;
+    setSource('all');
+    setExpandedId(inboxFocusCommId);
+    useStore.setState({ inboxFocusCommId: null });
+    // let the expanded card render, then scroll it into view
+    setTimeout(() => {
+      document.getElementById(`comm-${inboxFocusCommId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 150);
+  }, [inboxFocusCommId]);
   const [bodyCache, setBodyCache] = useState<Record<string, string>>({});
   const [loadingBody, setLoadingBody] = useState<string | null>(null);
 
@@ -585,6 +599,7 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
           {comms.map((comm) => (
             <div
               key={comm.id}
+              id={`comm-${comm.id}`}
               style={{
                 ...cardBase,
                 padding: 0,

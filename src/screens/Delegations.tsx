@@ -22,7 +22,9 @@ const btn: React.CSSProperties = {
   background: 'transparent', color: 'var(--ink2)', cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap',
 };
 
-export default function Delegations() {
+interface Props { setScreen?: (s: import('../App').Screen) => void }
+
+export default function Delegations({ setScreen }: Props) {
   const delegations = useStore((s) => s.delegations);
   const [showAdd, setShowAdd] = useState(false);
   const [newWhat, setNewWhat] = useState('');
@@ -61,6 +63,11 @@ export default function Delegations() {
           sessionId: `nudge-${id}`,
         }),
       });
+      // Jump to the Inbox with the source email + fresh draft open
+      if (d.sourceCommId && setScreen) {
+        useStore.setState({ inboxFocusCommId: d.sourceCommId });
+        setScreen('inbox');
+      }
     } finally { setNudging(null); }
   }
 

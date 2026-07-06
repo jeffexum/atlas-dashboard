@@ -382,7 +382,7 @@ export default function Shell({ screen, setScreen }: Props) {
           {screen === 'todos' && <Todos setScreen={setScreen} />}
           {screen === 'shopping' && <Shopping />}
           {screen === 'setup' && <Setup />}
-          {screen === 'delegations' && <Delegations />}
+          {screen === 'delegations' && <Delegations setScreen={setScreen} />}
           {screen === 'eval' && <Eval />}
           {screen === 'goals' && <Goals setScreen={setScreen} />}
           {screen === 'habits' && <Habits setScreen={setScreen} />}

@@ -410,39 +410,88 @@ function stripHtml(html: string): string {
 }
 
 // Automated sender patterns to always filter out
+// Only hard-drop unambiguous machine mail. no-reply/notifications@ senders are
+// NOT dropped here — DocuSign, banks, and wire confirmations arrive from exactly
+// those addresses; the AI scorer decides whether they need attention.
 const AUTOMATED_PATTERNS = [
-  /no.?reply/i, /noreply/i, /do.?not.?reply/i,
-  /notifications?@/i, /alerts?@/i, /updates?@/i,
-  /newsletter/i, /digest@/i, /mailer@/i,
-  /support@.*\.(zendesk|freshdesk|intercom)/i,
+  /mailer-daemon/i, /postmaster@/i,
+  /newsletter@/i, /digest@/i, /marketing@/i, /promo(tions)?@/i,
+  /bounce[sd]?@/i, /unsubscribe@/i,
 ];
 
 export function isAutomated(email: string, subject: string): boolean {
   if (AUTOMATED_PATTERNS.some((p) => p.test(email))) return true;
-  if (/unsubscribe|notification|automated|auto-generated/i.test(subject)) return true;
+  // Subject-based drop only for clear newsletter markers, not the word
+  // "notification" (which appears in wires, DocuSign, security alerts).
+  if (/\bunsubscribe\b/i.test(subject)) return true;
   return false;
 }
 
 export async function scoreEmailsWithAI(emails: { id: string; from: string; subject: string; preview: string }[]): Promise<Set<string>> {
-  if (!emails.length || !process.env.ANTHROPIC_API_KEY) return new Set(emails.map((e) => e.id));
-  const list = emails.map((e, i) => `${i + 1}. From: ${e.from} | Subject: ${e.subject} | Preview: ${e.preview}`).join('\n');
-  const response = await getClient().messages.create({
-    model: MODELS.cheap,
-    max_tokens: 256,
-    messages: [{
-      role: 'user',
-      content: `You are filtering a CEO's inbox. Return ONLY the numbers of emails that need a human response or action — skip newsletters, FYI updates, automated notifications, receipts, and calendar invites already accepted.
+  const r = await scoreEmails(emails);
+  return r.actionable;
+}
+
+// Chunked triage. Fails OPEN per chunk: if the model call or parse fails, every
+// email in that chunk is kept — a broken filter must never hide mail.
+export async function scoreEmails(emails: { id: string; from: string; subject: string; preview: string }[]): Promise<{ actionable: Set<string>; urgent: Set<string> }> {
+  const actionable = new Set<string>();
+  const urgent = new Set<string>();
+  if (!emails.length) return { actionable, urgent };
+  if (!process.env.ANTHROPIC_API_KEY) {
+    emails.forEach((e) => actionable.add(e.id));
+    return { actionable, urgent };
+  }
+
+  const CHUNK = 40;
+  for (let off = 0; off < emails.length; off += CHUNK) {
+    const chunk = emails.slice(off, off + CHUNK);
+    const list = chunk.map((e, i) => `${i + 1}. From: ${e.from} | Subject: ${e.subject} | Preview: ${e.preview}`).join('\n');
+    try {
+      const response = await getClient().messages.create({
+        model: MODELS.cheap,
+        max_tokens: 800,
+        messages: [{
+          role: 'user',
+          content: `You triage ${USER.firstName}'s inbox (${USER.bio}). Decide which emails deserve a place on his dashboard.
+
+INCLUDE (when in doubt, INCLUDE — a missed important email is far worse than an extra one):
+- Anything from a real person that asks, proposes, or informs about ongoing work
+- Signature/approval requests (DocuSign etc.), banking, wires, invoices needing action, legal, investor or board matters
+- Scheduling requests and replies in active threads
+- Security or account alerts that may need action
+
+EXCLUDE only clear noise: marketing/newsletters, social-media notifications, promo receipts, shipping-status spam, calendar auto-responses.
 
 ${list}
 
-Reply with just the numbers, comma-separated. Example: 1,3,5`,
-    }],
-  });
-  trackModelCall('email-triage', response.model, response.usage).catch(() => {});
-  const text = response.content.find((b) => b.type === 'text');
-  const raw = text?.type === 'text' ? text.text.trim() : '';
-  const indices = new Set(raw.split(',').map((n) => parseInt(n.trim(), 10) - 1).filter((n) => !isNaN(n)));
-  return new Set(emails.filter((_, i) => indices.has(i)).map((e) => e.id));
+Reply with ONLY the numbers to include, comma-separated. Prefix a number with ! if it is urgent/time-sensitive (e.g. !2,5,!9). Reply "none" if nothing qualifies.`,
+        }],
+      });
+      trackModelCall('email-triage', response.model, response.usage).catch(() => {});
+      const text = response.content.find((b) => b.type === 'text');
+      const raw = text?.type === 'text' ? text.text.trim() : '';
+      if (/^none\.?$/i.test(raw)) continue;
+      const tokens = raw.match(/!?\d+/g) || [];
+      if (!tokens.length) {
+        // Unparseable reply — fail open for this chunk
+        chunk.forEach((e) => actionable.add(e.id));
+        continue;
+      }
+      for (const t of tokens) {
+        const isUrgent = t.startsWith('!');
+        const idx = parseInt(t.replace('!', ''), 10) - 1;
+        const email = chunk[idx];
+        if (!email) continue;
+        actionable.add(email.id);
+        if (isUrgent) urgent.add(email.id);
+      }
+    } catch (err) {
+      console.error('email triage chunk failed — keeping all emails in chunk:', (err as Error).message);
+      chunk.forEach((e) => actionable.add(e.id));
+    }
+  }
+  return { actionable, urgent };
 }
 
 let _syncMailInFlight: Promise<void> | null = null;
@@ -492,33 +541,35 @@ async function _syncMail(): Promise<void> {
 
   const sentMessages = ((sentRaw as { value?: SentMessage[] }).value) || [];
 
-  // Build set of conversation IDs Jeff has already replied to (within 30 days)
-  const repliedConvIds = new Set(
-    sentMessages
-      .filter((m) => !m.sentDateTime || new Date(m.sentDateTime) >= since)
-      .map((m) => m.conversationId)
-      .filter((id): id is string => typeof id === 'string')
-  );
+  // Latest reply time per conversation. A reply only resolves what came BEFORE
+  // it — new messages arriving after the reply must still surface (previously a
+  // single reply muted the whole thread forever, hiding active conversations).
+  const lastReplyAt = new Map<string, number>();
+  for (const m of sentMessages) {
+    if (typeof m.conversationId !== 'string' || !m.sentDateTime) continue;
+    const ts = new Date(m.sentDateTime).getTime();
+    if (ts > (lastReplyAt.get(m.conversationId) || 0)) lastReplyAt.set(m.conversationId, ts);
+  }
 
-  // Filter: within 30 days, not already replied, not automated
+  // Filter: within 30 days, not superseded by Jeff's own reply, not clear junk
   const candidates = inboxMessages.filter((m) => {
     if (m.receivedDateTime && new Date(m.receivedDateTime) < since) return false;
-    if (m.conversationId && repliedConvIds.has(m.conversationId)) return false;
+    if (m.conversationId && m.receivedDateTime) {
+      const replied = lastReplyAt.get(m.conversationId);
+      if (replied && new Date(m.receivedDateTime).getTime() <= replied) return false;
+    }
     const fromAddr = m.from?.emailAddress?.address || '';
     if (isAutomated(fromAddr, m.subject || '')) return false;
     return true;
   });
 
-  // AI scoring — use Haiku for speed/cost
-  const actionable = await scoreEmailsWithAI(candidates.map((m) => ({
+  // AI scoring — chunked Haiku triage with urgency flags
+  const { actionable, urgent } = await scoreEmails(candidates.map((m) => ({
     id: m.id,
     from: m.from?.emailAddress?.name || m.from?.emailAddress?.address || '',
     subject: m.subject || '',
     preview: m.bodyPreview?.slice(0, 200) || '',
   })));
-
-  const priorities = ['p1', 'p2', 'p3'] as const;
-  let idx = 0;
 
   const comms = candidates
     .filter((m) => actionable.has(m.id))
@@ -534,7 +585,7 @@ async function _syncMail(): Promise<void> {
         preview: msg.bodyPreview?.slice(0, 120) || '',
         body: (body || msg.bodyPreview || '').slice(0, 3000),
         time: fmtRelative(msg.receivedDateTime),
-        priority: priorities[Math.min(idx++, 2)],
+        priority: (urgent.has(msg.id) ? 'p1' : 'p2') as 'p1' | 'p2' | 'p3',
         status: 'open' as const,
       };
     });

@@ -5,7 +5,7 @@
 import { getState, setState } from './state.js';
 import type { Comm } from './state.js';
 import { getGoogleAccessToken, hasGmailScope, isGoogleAuthenticated } from './google.js';
-import { isAutomated, scoreEmailsWithAI, fmtRelative } from './outlook.js';
+import { isAutomated, scoreEmails, fmtRelative } from './outlook.js';
 
 const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me';
 
@@ -95,7 +95,7 @@ async function _syncGmail(): Promise<void> {
     return !isAutomated(email, header(m, 'Subject'));
   });
 
-  const actionable = await scoreEmailsWithAI(candidates.map((m) => ({
+  const { actionable, urgent } = await scoreEmails(candidates.map((m) => ({
     id: m.id,
     from: header(m, 'From'),
     subject: header(m, 'Subject'),
@@ -104,7 +104,7 @@ async function _syncGmail(): Promise<void> {
 
   const comms: Comm[] = candidates
     .filter((m) => actionable.has(m.id))
-    .map((m, idx) => {
+    .map((m) => {
       const from = parseFrom(header(m, 'From'));
       const body = extractBody(m.payload).slice(0, 3000);
       return {
@@ -116,7 +116,7 @@ async function _syncGmail(): Promise<void> {
         preview: (m.snippet || body).slice(0, 200),
         body,
         time: fmtRelative(m.internalDate ? new Date(parseInt(m.internalDate, 10)).toISOString() : undefined),
-        priority: (idx < 2 ? 'p1' : idx < 6 ? 'p2' : 'p3') as Comm['priority'],
+        priority: (urgent.has(m.id) ? 'p1' : 'p2') as Comm['priority'],
         status: 'open' as const,
       };
     });

@@ -597,6 +597,7 @@ async function _syncMail(): Promise<void> {
         preview: msg.bodyPreview?.slice(0, 120) || '',
         body: (body || msg.bodyPreview || '').slice(0, 3000),
         time: fmtRelative(msg.receivedDateTime),
+        receivedAt: msg.receivedDateTime ? new Date(msg.receivedDateTime).getTime() : 0,
         priority: (urgent.has(msg.id) ? 'p1' : 'p2') as 'p1' | 'p2' | 'p3',
         status: 'open' as const,
       };
@@ -615,11 +616,14 @@ async function _syncMail(): Promise<void> {
   // unmount the composer mid-edit.
   const freshIds = new Set(comms.map((c) => c.id));
   const stillInWindow = new Set(inboxMessages.map((m) => m.id));
-  const carried = priorComms.filter((c) =>
-    !c.id.startsWith('gm-')
-    && !freshIds.has(c.id)
-    && stillInWindow.has(c.id) // gone from the mailbox window (deleted/replied) → drop
-  );
+  const receivedById = new Map(inboxMessages.map((m) => [m.id, m.receivedDateTime ? new Date(m.receivedDateTime).getTime() : 0]));
+  const carried = priorComms
+    .filter((c) =>
+      !c.id.startsWith('gm-')
+      && !freshIds.has(c.id)
+      && stillInWindow.has(c.id) // gone from the mailbox window (deleted/replied) → drop
+    )
+    .map((c) => c.receivedAt ? c : { ...c, receivedAt: receivedById.get(c.id) || 0 });
 
   const merged = [
     ...gmailComms,

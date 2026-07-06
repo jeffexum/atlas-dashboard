@@ -22,6 +22,7 @@ export interface Comm {
   subject: string;
   preview: string;
   time: string;
+  receivedAt?: number;
   priority: 'p1' | 'p2' | 'p3';
   status: 'open' | 'snoozed' | 'dismissed';
 }

@@ -447,8 +447,13 @@ type MailSource = 'all' | 'work' | 'personal';
 
 export default function Inbox({ setScreen: _setScreen }: Props) {
   const [source, setSource] = useState<MailSource>('all');
+  const [prioFilter, setPrioFilter] = useState<'all' | 'p1' | 'p2'>('all');
   const [tab, setTab] = useState<'messages' | 'drafts'>('messages');
-  const allComms = useStore((s) => s.comms).filter((c) => c.status !== 'dismissed');
+  // Newest first — receivedAt is a real timestamp; items without one sink to the bottom
+  const allComms = useStore((s) => s.comms)
+    .filter((c) => c.status !== 'dismissed')
+    .slice()
+    .sort((a, b) => (b.receivedAt || 0) - (a.receivedAt || 0));
   const dayPlan = useStore((s) => s.dayPlan);
   // Today's email block from the Day Builder: which emails are queued, when, drafts ready?
   const todayStr = new Date().toLocaleDateString('en-CA');
@@ -459,9 +464,12 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
   const isPersonal = (id: string) => id.startsWith('gm-');
   const workCount = allComms.filter((c) => !isPersonal(c.id)).length;
   const personalCount = allComms.filter((c) => isPersonal(c.id)).length;
-  const comms = source === 'all' ? allComms
+  const sourceFiltered = source === 'all' ? allComms
     : source === 'personal' ? allComms.filter((c) => isPersonal(c.id))
     : allComms.filter((c) => !isPersonal(c.id));
+  const comms = prioFilter === 'all' ? sourceFiltered
+    : prioFilter === 'p1' ? sourceFiltered.filter((c) => c.priority === 'p1')
+    : sourceFiltered.filter((c) => c.priority !== 'p1');
   const dismissComm = useStore((s) => s.dismissComm);
   const drafts = useStore((s) => s.drafts);
   const snoozeComm = useStore((s) => s.snoozeComm);
@@ -713,6 +721,32 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
               }}
             >
               {label} <span style={{ fontSize: 10.5, fontFamily: "'JetBrains Mono', monospace", color: 'var(--faint)' }}>{count}</span>
+            </button>
+          ))}
+        </div>
+        <div style={{ display: 'inline-flex', gap: 2, padding: 2, marginBottom: 14, marginLeft: 8, background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 8 }}>
+          {([
+            ['all', 'All'],
+            ['p1', '🔴 High'],
+            ['p2', '🟡 Normal'],
+          ] as ['all' | 'p1' | 'p2', string][]).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setPrioFilter(key)}
+              style={{
+                padding: '5px 12px',
+                fontSize: 12.5,
+                fontWeight: prioFilter === key ? 600 : 400,
+                border: 'none',
+                borderRadius: 6,
+                cursor: 'pointer',
+                fontFamily: 'inherit',
+                background: prioFilter === key ? 'var(--card)' : 'transparent',
+                color: prioFilter === key ? 'var(--ink)' : 'var(--mut)',
+                boxShadow: prioFilter === key ? 'var(--shadow-card)' : 'none',
+              }}
+            >
+              {label}
             </button>
           ))}
         </div>

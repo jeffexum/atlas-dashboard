@@ -21,6 +21,7 @@ export interface Comm {
   preview: string;
   body?: string;
   time: string;
+  receivedAt?: number; // ms epoch, for sorting
   priority: 'p1' | 'p2' | 'p3';
   status: 'open' | 'snoozed' | 'dismissed';
 }

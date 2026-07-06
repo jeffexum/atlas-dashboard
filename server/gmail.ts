@@ -116,6 +116,7 @@ async function _syncGmail(): Promise<void> {
         preview: (m.snippet || body).slice(0, 200),
         body,
         time: fmtRelative(m.internalDate ? new Date(parseInt(m.internalDate, 10)).toISOString() : undefined),
+        receivedAt: m.internalDate ? parseInt(m.internalDate, 10) : 0,
         priority: (urgent.has(m.id) ? 'p1' : 'p2') as Comm['priority'],
         status: 'open' as const,
       };
@@ -130,9 +131,10 @@ async function _syncGmail(): Promise<void> {
   // as long as the message is still in the fetched window.
   const freshIds = new Set(comms.map((c) => c.id));
   const windowIds = new Set(messages.map((m) => `gm-${m.id}`));
-  const carried = st.comms.filter((c) =>
-    c.id.startsWith('gm-') && !freshIds.has(c.id) && windowIds.has(c.id)
-  );
+  const receivedById = new Map(messages.map((m) => [`gm-${m.id}`, m.internalDate ? parseInt(m.internalDate, 10) : 0]));
+  const carried = st.comms
+    .filter((c) => c.id.startsWith('gm-') && !freshIds.has(c.id) && windowIds.has(c.id))
+    .map((c) => c.receivedAt ? c : { ...c, receivedAt: receivedById.get(c.id) || 0 });
   const merged = [
     ...outlookComms,
     ...carried,

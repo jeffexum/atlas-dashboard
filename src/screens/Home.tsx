@@ -99,6 +99,19 @@ function DayBuilderCard() {
   const [busy, setBusy] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [lastReply, setLastReply] = useState('');
+  const [collapsed, setCollapsed] = useState(() => localStorage.getItem('atlas-daybuilder-collapsed') === '1');
+  function toggleCollapsed() {
+    setCollapsed((v) => {
+      localStorage.setItem('atlas-daybuilder-collapsed', v ? '0' : '1');
+      return !v;
+    });
+  }
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const today = new Date().toLocaleDateString('en-CA');
+    // default to the existing plan's date if it's today or upcoming
+    return useStore.getState().dayPlan?.date && useStore.getState().dayPlan!.date >= today
+      ? useStore.getState().dayPlan!.date : today;
+  });
 
   async function ask(message: string) {
     if (busy) return;
@@ -122,17 +135,28 @@ function DayBuilderCard() {
   }
 
   const todayStr = new Date().toLocaleDateString('en-CA');
-  // Show today's plan or an upcoming one (built the evening before)
-  const planIsCurrent = !!dayPlan && dayPlan.date >= todayStr;
-  const planLabel = dayPlan?.date === todayStr ? 'today' :
-    dayPlan ? new Date(`${dayPlan.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '';
+  // The card shows the plan for the selected date (if one exists)
+  const planIsCurrent = !!dayPlan && dayPlan.date === selectedDate;
+  const dateLabel = selectedDate === todayStr ? 'today'
+    : new Date(`${selectedDate}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 
   return (
     <div style={{ ...cardBase, padding: '20px', marginBottom: '12px' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-        <span style={{ fontSize: 13, fontWeight: 600 }}>🗓 Day Builder</span>
-        {dayPlan && planIsCurrent && planLabel !== 'today' && (
-          <span style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: 'var(--faint)' }}>{planLabel}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: collapsed ? 0 : 10 }}>
+        <button onClick={toggleCollapsed} title={collapsed ? 'Expand' : 'Collapse'}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 11, color: 'var(--mut)', padding: 0, fontFamily: 'inherit' }}>
+          {collapsed ? '▸' : '▾'}
+        </button>
+        <span style={{ fontSize: 13, fontWeight: 600, cursor: 'pointer' }} onClick={toggleCollapsed}>🗓 Day Builder</span>
+        {!collapsed && (
+          <input type="date" value={selectedDate} min={todayStr}
+            onChange={(e) => e.target.value && setSelectedDate(e.target.value)}
+            style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", border: '1px solid var(--line)', borderRadius: 4, padding: '2px 6px', background: 'var(--card)', color: 'var(--ink2)', colorScheme: 'inherit' }} />
+        )}
+        {collapsed && dayPlan && (
+          <span style={{ fontSize: 11, fontFamily: "'JetBrains Mono', monospace", color: 'var(--faint)' }}>
+            {dayPlan.date} · {dayPlan.blocks.length} blocks · {dayPlan.status}
+          </span>
         )}
         {dayPlan && planIsCurrent && (
           <span style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", padding: '2px 8px', borderRadius: 10,
@@ -144,7 +168,7 @@ function DayBuilderCard() {
         )}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 6 }}>
           {(!dayPlan || !planIsCurrent) && (
-            <button onClick={() => ask('Build my day: look at my calendar, due to-dos, inbox, habits, and health scores, and propose a full day plan with set_day_plan — include an email batch block with the specific emails needing replies, deep work on due tasks, exercise/outside time, and creative/personal development time.')}
+            <button onClick={() => ask(`Build my day for ${selectedDate} (${dateLabel}): look at my calendar on both accounts for that date (use check_availability if beyond your context), due to-dos, inbox, habits, and health scores, and propose a full day plan with set_day_plan date=${selectedDate} — include an email batch block with the specific emails needing replies, deep work on due tasks, exercise/outside time, and creative/personal development time. Do not book anything yet.`)}
               disabled={busy}
               style={{ padding: '5px 14px', fontSize: 12, fontWeight: 600, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 14, cursor: busy ? 'default' : 'pointer', fontFamily: 'inherit', opacity: busy ? 0.6 : 1 }}>
               {busy ? 'Planning…' : 'Build my day'}
@@ -160,6 +184,7 @@ function DayBuilderCard() {
         </div>
       </div>
 
+      {!collapsed && (<>
       {dayPlan && planIsCurrent ? (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {dayPlan.blocks.map((b) => (
@@ -181,7 +206,7 @@ function DayBuilderCard() {
         </div>
       ) : (
         <p style={{ fontSize: 12.5, color: 'var(--mut)', fontStyle: 'italic', margin: 0 }}>
-          {busy ? `${assistantName} is looking at your calendar, tasks, inbox, and health…` : `No plan for today yet — have ${assistantName} build one around your meetings, due tasks, and readiness.`}
+          {busy ? `${assistantName} is looking at your calendar, tasks, inbox, and health…` : `No plan for ${dateLabel} yet — have ${assistantName} build one around your meetings, due tasks, and readiness.`}
         </p>
       )}
 
@@ -207,6 +232,7 @@ function DayBuilderCard() {
           </button>
         </div>
       )}
+      </>)}
     </div>
   );
 }

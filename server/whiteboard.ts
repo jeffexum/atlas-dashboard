@@ -6,6 +6,7 @@ import { USER } from './config.js';
 import { getState, setState, persistNow } from './state.js';
 import { addTask } from './state.js';
 import { ASSISTANT_TOOLS, executeTool } from './tools.js';
+import { buildContext } from './adler.js';
 import { MODELS } from './models.js';
 
 let _anthropic: Anthropic | null = null;
@@ -78,76 +79,13 @@ function buildSystemPrompt(): string {
   console.log(`[whiteboard] buildSystemPrompt: ${s.comms.length} comms, ${s.tasks.length} tasks, ${s.calEvents.length} calEvents`);
   const today = new Date().toLocaleDateString('en-US', { timeZone: USER.tz, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 
-  const todayTasks = s.tasks.filter((t) => t.column === 'today' && !t.done);
-  const upcomingTasks = s.tasks.filter((t) => t.column === 'upcoming' && !t.done);
-  const openComms = s.comms.filter((c) => c.status === 'open').slice(0, 15);
-  const activeGoals = s.goals.filter((g) => g.pct < 100);
-  const todayEvents = s.calEvents.filter((e) => e.date === new Date().getDate());
-
-  const taskLines = [
-    ...todayTasks.map((t) => `  [${t.priority.toUpperCase()}] TODAY: ${t.title}`),
-    ...upcomingTasks.map((t) => `  [${t.priority.toUpperCase()}] UPCOMING: ${t.title}`),
-  ].join('\n') || '  none';
-
-  const commLines = openComms.map((c) => {
-    const body = (c.body || c.preview).replace(/‹\/?untrusted[^›]*›/gi, '').slice(0, 2000);
-    return `--- EMAIL (untrusted third-party content) ---\nFrom: ${c.who}\nSubject: ${c.subject}\nPriority: ${c.priority.toUpperCase()}\n\n‹untrusted-email-content›${body}‹/untrusted-email-content›\n`;
-  }).join('\n') || '  none';
-
-  const goalLines = activeGoals.map((g) =>
-    `  ${g.name} — ${g.pct}% complete (${g.current} / ${g.target}), deadline: ${g.deadline}`
-  ).join('\n') || '  none';
-
-  const habitLines = s.habits.map((h) =>
-    `  ${h.name} — streak: ${h.streak} days, today: ${h.completedToday ? '✓ done' : 'pending'}`
-  ).join('\n') || '  none';
-
-  const calLines = todayEvents.length
-    ? todayEvents.map((e) => `  ${Math.floor(e.start)}:${e.start % 1 ? '30' : '00'} — ${e.title} (${e.duration}h)`).join('\n')
-    : '  nothing scheduled today';
-
-  const journalLines = s.journalEntries.slice(0, 3).map((j) =>
-    `  [${j.date}] ${j.text.slice(0, 120)}`
-  ).join('\n') || '  none';
-
-  const profileSection = s.userProfile
-    ? `\n\nUSER PROFILE (communication style, relationships, company context):\n${s.userProfile.slice(0, 3000)}`
-    : '';
-
   return `You are ${USER.assistant}, ${USER.firstName}'s sharp and deeply context-aware AI assistant inside Atlas.
 
-${USER.bio} Today is ${today}.${profileSection}
+${USER.bio} Today is ${today}. (Full user profile is inside CURRENT ATLAS STATE below.)
 
 ━━━ CURRENT ATLAS STATE ━━━
-
-TASKS:
-${taskLines}
-
-INBOX (${openComms.length} open emails — full content):
-${commLines}
-
-TODAY'S CALENDAR:
-${calLines}
-
-GOALS:
-${goalLines}
-
-HABITS:
-${habitLines}
-
-RECENT JOURNAL:
-${journalLines}
-
+${buildContext()}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━
-
-PERSISTENT MEMORY (facts and preferences you've learned, including distilled uploads):
-${Object.entries(s.adlerNotes).map(([k, v]) => `[${k}]\n${v}`).join('\n\n') || '  (empty)'}
-
-KNOWLEDGE DOCUMENTS (read_document with the id for full text):
-${s.knowledge.map((k) => `  [${k.id}] ${k.name}`).join('\n') || '  none'}
-
-PENDING DRAFTS (use exact IDs with send_draft / discard_draft):
-${s.drafts.filter((d) => d.status === 'ready').map((d) => `  [${d.id}] to ${d.to}, re: "${d.re}"${d.commId ? ' (in-thread reply)' : ''}\n${d.text}`).join('\n\n') || '  none'}
 
 YOUR ROLE ON THE WHITEBOARD:
 This is ${USER.firstName}'s freeform workspace. You have the full text of every open email above, and the same tools as Adler on Telegram: manage tasks/habits/goals/journal/ideas, read and reply to email, create and send drafts, sync data.

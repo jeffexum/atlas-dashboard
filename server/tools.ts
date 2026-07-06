@@ -14,6 +14,7 @@ import { USER } from './config.js';
 import { isGmailConnected, syncGmail, replyGmail, fetchGmailBody } from './gmail.js';
 import { syncOura, isOuraConfigured } from './oura.js';
 import { addDelegation, setDelegationStatus, deleteDelegation } from './delegations.js';
+import { fetchDayEvents } from './schedule.js';
 
 export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
   // ── Tasks ──
@@ -109,6 +110,16 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
       durationMin: { type: 'number', description: 'Duration in minutes (default 30)' },
       taskId: { type: 'string', description: 'Optional: id of the to-do this event blocks time for' },
     }, required: ['title', 'calendar', 'date', 'startHour'] },
+  },
+  {
+    name: 'update_draft',
+    description: "Update an existing draft's text (and optionally cc/bcc). Use this to revise a draft after workshopping it — create_draft refuses duplicates for a thread that already has one.",
+    input_schema: { type: 'object' as const, properties: { draftId: { type: 'string' }, text: { type: 'string' }, cc: { type: 'string' }, bcc: { type: 'string' } }, required: ['draftId', 'text'] },
+  },
+  {
+    name: 'check_availability',
+    description: "Fetch the user's REAL calendars (Outlook + Gmail) live for a specific date — works for ANY future date, beyond the 7-day window in context. Returns busy events and free gaps 8am-6pm.",
+    input_schema: { type: 'object' as const, properties: { date: { type: 'string', description: 'YYYY-MM-DD (user timezone)' } }, required: ['date'] },
   },
   {
     name: 'search_contacts',
@@ -433,6 +444,40 @@ export async function executeTool(name: string, input: Record<string, unknown>):
           return `Failed to delete event: ${(err as Error).message}`;
         }
         return 'Calendar event deleted.';
+      }
+      case 'update_draft': {
+        const draftId = input.draftId as string;
+        if (!getState().drafts.some((d) => d.id === draftId)) return `Draft ${draftId} not found.`;
+        setState({ drafts: getState().drafts.map((d) => d.id === draftId ? {
+          ...d,
+          text: input.text as string,
+          ...(input.cc !== undefined ? { cc: input.cc as string } : {}),
+          ...(input.bcc !== undefined ? { bcc: input.bcc as string } : {}),
+        } : d) });
+        await persistNow();
+        return `Draft ${draftId} updated.`;
+      }
+      case 'check_availability': {
+        const dateStr = input.date as string;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return `Invalid date "${dateStr}" — expected YYYY-MM-DD.`;
+        try {
+          const events = await fetchDayEvents(dateStr);
+          if (!events.length) return `${dateStr}: no events on either calendar — fully open 8am-6pm.`;
+          const fmt = (h: number) => `${Math.floor(h)}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`;
+          const busy = events.map((e) => `  ${fmt(e.start)}-${fmt(e.end)} ${e.title} [${e.source}]${e.allDay ? ' (all-day)' : ''}`).join('\n');
+          // free gaps 8-18 from timed events
+          const timed = events.filter((e) => !e.allDay).sort((a, b) => a.start - b.start);
+          const gaps: string[] = [];
+          let cursor = 8;
+          for (const e of timed) {
+            if (e.start - cursor >= 0.5) gaps.push(`${fmt(cursor)}-${fmt(e.start)}`);
+            cursor = Math.max(cursor, e.end);
+          }
+          if (18 - cursor >= 0.5) gaps.push(`${fmt(cursor)}-18:00`);
+          return `${dateStr} events:\n${busy}\n\nFree gaps (8am-6pm): ${gaps.join(', ') || 'none'}`;
+        } catch (err) {
+          return `Could not fetch calendars for ${dateStr}: ${(err as Error).message}`;
+        }
       }
       case 'search_contacts': {
         const q = String(input.query || '').toLowerCase().trim();

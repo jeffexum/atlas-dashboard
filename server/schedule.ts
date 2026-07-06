@@ -140,3 +140,48 @@ export async function guessTimezone(commId: string): Promise<string | null> {
     return null;
   }
 }
+
+// Live fetch of both real calendars for one date (any future date — not limited
+// to the synced window). Times returned as decimal local hours.
+export async function fetchDayEvents(dateStr: string): Promise<Array<{ title: string; start: number; end: number; source: string; allDay: boolean }>> {
+  const { graphGet, isAuthenticated } = await import('./outlook.js');
+  const { getGoogleAccessToken, isGoogleAuthenticated } = await import('./google.js');
+  const out: Array<{ title: string; start: number; end: number; source: string; allDay: boolean }> = [];
+
+  const dayStart = localToEpoch(...(dateStr.split('-').map(Number) as [number, number, number]), 0);
+  const dayEnd = dayStart + 24 * 3600_000;
+
+  if (isAuthenticated()) {
+    const data = await graphGet(
+      `/me/calendarview?startDateTime=${new Date(dayStart).toISOString()}&endDateTime=${new Date(dayEnd).toISOString()}&$top=50&$select=subject,start,end,isAllDay`,
+      { 'Prefer': `outlook.timezone="${USER.tz === 'America/Denver' ? 'Mountain Standard Time' : 'UTC'}"` }
+    ) as { value: { subject?: string; start?: { dateTime?: string }; end?: { dateTime?: string }; isAllDay?: boolean }[] };
+    for (const e of data.value || []) {
+      const parse = (dt?: string) => { const t = (dt || '').split('T')[1] || '0:0'; const [h = 0, m = 0] = t.split(':').map(Number); return h + m / 60; };
+      out.push({ title: e.subject || '(no title)', start: e.isAllDay ? 0 : parse(e.start?.dateTime), end: e.isAllDay ? 24 : parse(e.end?.dateTime), source: 'work', allDay: !!e.isAllDay });
+    }
+  }
+
+  if (isGoogleAuthenticated()) {
+    const token = await getGoogleAccessToken();
+    const url = new URL('https://www.googleapis.com/calendar/v3/calendars/primary/events');
+    url.searchParams.set('timeMin', new Date(dayStart).toISOString());
+    url.searchParams.set('timeMax', new Date(dayEnd).toISOString());
+    url.searchParams.set('singleEvents', 'true');
+    const res = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` } });
+    if (res.ok) {
+      const data = await res.json() as { items?: { summary?: string; start?: { dateTime?: string; date?: string }; end?: { dateTime?: string; date?: string } }[] };
+      for (const e of data.items || []) {
+        const allDay = !e.start?.dateTime;
+        const toHour = (iso?: string) => {
+          if (!iso) return 0;
+          const local = new Date(iso).toLocaleTimeString('en-US', { timeZone: USER.tz, hour: 'numeric', minute: 'numeric', hour12: false });
+          const [h = 0, m = 0] = local.split(':').map(Number);
+          return (h % 24) + m / 60;
+        };
+        out.push({ title: e.summary || '(no title)', start: allDay ? 0 : toHour(e.start?.dateTime), end: allDay ? 24 : toHour(e.end?.dateTime), source: 'personal', allDay });
+      }
+    }
+  }
+  return out.sort((a, b) => a.start - b.start);
+}

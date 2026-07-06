@@ -322,13 +322,15 @@ export default function Calendar() {
             const top = i * HOUR_HEIGHT;
             return (
               <React.Fragment key={hour}>
+                {/* Label centered ON the hour line so events (positioned at the
+                    hour boundary) align with the axis */}
                 <div
                   style={{
                     position: 'absolute',
                     left: 0,
                     width: 52,
-                    top,
-                    height: HOUR_HEIGHT,
+                    top: Math.max(0, top - 7),
+                    height: 14,
                     display: 'flex',
                     alignItems: 'center',
                     paddingLeft: 12,
@@ -345,7 +347,7 @@ export default function Calendar() {
                     position: 'absolute',
                     left: 52,
                     right: 0,
-                    top: top + 22,
+                    top,
                     height: 1,
                     background: 'var(--line2)',
                   }}

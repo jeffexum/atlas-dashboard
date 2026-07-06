@@ -110,6 +110,11 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
       taskId: { type: 'string', description: 'Optional: id of the to-do this event blocks time for' },
     }, required: ['title', 'calendar', 'date', 'startHour'] },
   },
+  {
+    name: 'search_contacts',
+    description: "Search the user's contact directory (built from their Outlook mail history and address book). Use to resolve names to email addresses before sending/cc'ing.",
+    input_schema: { type: 'object' as const, properties: { query: { type: 'string', description: 'Name or partial email' } }, required: ['query'] },
+  },
   // ── Inbox / email ──
   {
     name: 'read_email',
@@ -429,6 +434,15 @@ export async function executeTool(name: string, input: Record<string, unknown>):
         }
         return 'Calendar event deleted.';
       }
+      case 'search_contacts': {
+        const q = String(input.query || '').toLowerCase().trim();
+        if (!q) return 'Provide a name or partial email to search.';
+        const hits = getState().contacts
+          .filter((c) => c.name.toLowerCase().includes(q) || c.email.includes(q))
+          .slice(0, 8);
+        if (!hits.length) return `No contacts matching "${q}".`;
+        return hits.map((c) => `${c.name} <${c.email}> (${c.count} emails)`).join('\n');
+      }
       case 'read_email': {
         const commId = input.commId as string;
         const body = commId.startsWith('gm-')
@@ -466,6 +480,8 @@ export async function executeTool(name: string, input: Record<string, unknown>):
           text: input.body as string,
           status: 'ready',
           ...(input.commId ? { commId: input.commId as string } : {}),
+          ...(input.cc ? { cc: input.cc as string } : {}),
+          ...(input.bcc ? { bcc: input.bcc as string } : {}),
         };
         setState({ drafts: [...getState().drafts, draft] });
         await persistNow();
@@ -477,11 +493,11 @@ export async function executeTool(name: string, input: Record<string, unknown>):
         if (!draft) return `Error: draft ${input.draftId} not found.`;
         if (draft.status === 'sent') return 'Error: draft already sent.';
         if (draft.commId?.startsWith('gm-')) {
-          await replyGmail(draft.commId, draft.text);
+          await replyGmail(draft.commId, draft.text, false, { cc: draft.cc, bcc: draft.bcc });
         } else if (draft.commId) {
-          await replyToEmail(draft.commId, draft.text);
+          await replyToEmail(draft.commId, draft.text, false, { cc: draft.cc, bcc: draft.bcc });
         } else {
-          await sendEmail(draft.to, draft.re, draft.text);
+          await sendEmail(draft.to, draft.re, draft.text, { cc: draft.cc, bcc: draft.bcc });
         }
         // Re-read state after the network send so concurrent draft edits aren't reverted.
         setState({ drafts: getState().drafts.map((d) => d.id === draft.id ? { ...d, status: 'sent' as const } : d) });

@@ -8,7 +8,7 @@ import cors from 'cors';
 import { getState, setState, persistNow, addHabit, deleteHabit, toggleHabitToday, recomputeAllHabits, dismissComm, snoozeComm, addShoppingItem, toggleShoppingItem, deleteShoppingItem, clearBoughtShoppingItems } from './state.js';
 import type { Comm } from './state.js';
 import { adlerProactiveCheck, generateBriefing, runPartnerAdler, runAdler } from './adler.js';
-import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, replyToEmail, fetchEmailBody, hasCalendarWrite } from './outlook.js';
+import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, replyToEmail, fetchEmailBody, hasCalendarWrite, syncContacts } from './outlook.js';
 import { getGoogleAuthUrl, exchangeGoogleCode, syncGoogleCalendar, isGoogleAuthenticated, loadGoogleToken, hasCalendarWriteScope } from './google.js';
 import { syncOura, isOuraConfigured } from './oura.js';
 import { isGmailConnected, syncGmail, replyGmail, fetchGmailBody } from './gmail.js';
@@ -336,12 +336,13 @@ app.post('/api/drafts/send', async (req: Request, res: Response) => {
   const bodyText = typeof text === 'string' && text.trim() ? text : found.text;
   try {
     // Drafts linked to an inbox email send as in-thread replies, not new threads
+    const extra = { cc: found.cc, bcc: found.bcc };
     if (found.commId?.startsWith('gm-')) {
-      await replyGmail(found.commId, bodyText);
+      await replyGmail(found.commId, bodyText, false, extra);
     } else if (found.commId) {
-      await replyToEmail(found.commId, bodyText);
+      await replyToEmail(found.commId, bodyText, false, extra);
     } else {
-      await sendEmail(found.to, found.re, bodyText);
+      await sendEmail(found.to, found.re, bodyText, extra);
     }
     setState({ drafts: getState().drafts.map((d) => d.id === draftId ? { ...d, text: bodyText, status: 'sent' as const } : d) });
     audit('user', 'route:draft-send', draftId, `to ${found.to} re "${found.re}"`).catch(() => {});
@@ -365,10 +366,15 @@ app.post('/api/drafts/:id/status', async (req: Request, res: Response) => {
 });
 
 app.patch('/api/drafts/:id', async (req: Request, res: Response) => {
-  const { text } = req.body as { text: string };
+  const { text, cc, bcc } = req.body as { text?: string; cc?: string; bcc?: string };
   const s = getState();
   if (!s.drafts.some((d) => d.id === req.params.id)) { res.status(404).json({ error: 'draft not found' }); return; }
-  setState({ drafts: s.drafts.map((d) => d.id === req.params.id ? { ...d, text } : d) });
+  setState({ drafts: s.drafts.map((d) => d.id === req.params.id ? {
+    ...d,
+    ...(typeof text === 'string' ? { text } : {}),
+    ...(typeof cc === 'string' ? { cc } : {}),
+    ...(typeof bcc === 'string' ? { bcc } : {}),
+  } : d) });
   await persistNow();
   res.json({ ok: true });
 });
@@ -654,6 +660,12 @@ app.get('/api/setup/status', async (_req: Request, res: Response) => {
 
 app.get('/api/gmail/status', (_req: Request, res: Response) => {
   res.json({ connected: isGmailConnected() });
+});
+
+app.get('/api/contacts/sync', async (_req: Request, res: Response) => {
+  if (!isAuthenticated()) { res.status(401).json({ error: 'Outlook not connected' }); return; }
+  try { await syncContacts(); res.json({ ok: true, count: getState().contacts.length }); }
+  catch (err) { res.status(500).json({ error: (err as Error).message }); }
 });
 
 app.get('/api/gmail/sync', async (_req: Request, res: Response) => {
@@ -1046,6 +1058,7 @@ import { loadPersistedState, migrateLegacyState, isLoadedOk } from './state.js';
     isGoodreadsConfigured() ? syncGoodreads() : Promise.resolve(),
     (async () => { sweepDelegationStatuses(); await extractDelegations(); })(),
     ensureGraphSubscription(),
+    isAuthenticated() ? syncContacts() : Promise.resolve(),
   ]);
 
   await generateBriefing().catch((e) => console.warn('Boot briefing failed:', (e as Error).message));
@@ -1056,6 +1069,11 @@ setInterval(() => {
   if (isOuraConfigured()) syncOura().catch(() => {});
   if (isGoodreadsConfigured()) syncGoodreads().catch(() => {});
 }, 2 * 60 * 60_000);
+
+// Contacts directory refresh twice a day (changes slowly)
+setInterval(() => {
+  if (isAuthenticated()) syncContacts().catch(() => {});
+}, 12 * 60 * 60_000);
 
 // ── Start ─────────────────────────────────────────────────────────────────────
 

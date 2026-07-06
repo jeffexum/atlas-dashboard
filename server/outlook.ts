@@ -36,7 +36,7 @@ const TENANT_ID = process.env.MICROSOFT_TENANT_ID || '';
 const API_BASE = process.env.WEBHOOK_URL || process.env.PUBLIC_API_URL || '';
 const REDIRECT_URI = process.env.MICROSOFT_REDIRECT_URI || (API_BASE ? `${API_BASE}/api/outlook/callback` : '');
 
-const SCOPES = ['offline_access', 'User.Read', 'Mail.Read', 'Mail.Send', 'Calendars.ReadWrite'];
+const SCOPES = ['offline_access', 'User.Read', 'Mail.Read', 'Mail.Send', 'Calendars.ReadWrite', 'Contacts.Read'];
 
 interface TokenData {
   access_token: string;
@@ -316,16 +316,26 @@ async function graphPost(path: string, body: unknown): Promise<void> {
   }
 }
 
+const toRecipients = (list?: string) => (list || '')
+  .split(',').map((a) => a.trim()).filter((a) => a.includes('@'))
+  .map((address) => ({ emailAddress: { address } }));
+
 // Reply within the original thread via Graph — recipients, subject, and threading
-// headers all come from the original message
-export async function replyToEmail(messageId: string, body: string, replyAll = false): Promise<void> {
+// headers all come from the original message. Optional cc/bcc ADD recipients.
+export async function replyToEmail(messageId: string, body: string, replyAll = false, extra?: { cc?: string; bcc?: string }): Promise<void> {
   const endpoint = replyAll ? 'replyAll' : 'reply';
+  const cc = toRecipients(extra?.cc);
+  const bcc = toRecipients(extra?.bcc);
   await graphPost(`/me/messages/${encodeURIComponent(messageId)}/${endpoint}`, {
     comment: body.replace(/\n/g, '<br>'),
+    ...(cc.length || bcc.length ? { message: {
+      ...(cc.length ? { ccRecipients: cc } : {}),
+      ...(bcc.length ? { bccRecipients: bcc } : {}),
+    } } : {}),
   });
 }
 
-export async function sendEmail(to: string, subject: string, body: string): Promise<void> {
+export async function sendEmail(to: string, subject: string, body: string, extra?: { cc?: string; bcc?: string }): Promise<void> {
   // Resolve the recipient by NAME (or accept a literal address). Never match on
   // subject — that could silently send to an unrelated person who happens to share
   // a subject line. This tool starts a NEW message, so don't force a "Re:" prefix.
@@ -341,6 +351,8 @@ export async function sendEmail(to: string, subject: string, body: string): Prom
       subject: subject || '(no subject)',
       body: { contentType: 'Text', content: body },
       toRecipients: [{ emailAddress: { address: toAddress } }],
+      ...(toRecipients(extra?.cc).length ? { ccRecipients: toRecipients(extra?.cc) } : {}),
+      ...(toRecipients(extra?.bcc).length ? { bccRecipients: toRecipients(extra?.bcc) } : {}),
     },
     saveToSentItems: true,
   });
@@ -700,4 +712,55 @@ export async function syncCalendar(): Promise<void> {
   const st = getState();
   const personal = st.calEvents.filter((e) => e.id.startsWith('gcal-'));
   setState({ calEvents: [...personal, ...calEvents] });
+}
+
+
+// ── Contacts directory ────────────────────────────────────────────────────────
+// Built from mail headers (works with Mail.Read alone) and, once Contacts.Read
+// has been consented, merged with the real Outlook address book.
+export async function syncContacts(): Promise<void> {
+  const byEmail = new Map<string, { name: string; email: string; count: number; lastAt: number }>();
+  const addPerson = (name: string | undefined, email: string | undefined, at: number) => {
+    const addr = (email || '').trim().toLowerCase();
+    if (!addr.includes('@') || /no.?reply|mailer-daemon|postmaster/i.test(addr)) return;
+    const cur = byEmail.get(addr);
+    if (cur) {
+      cur.count += 1;
+      if (at > cur.lastAt) { cur.lastAt = at; if (name?.trim()) cur.name = name.trim(); }
+    } else {
+      byEmail.set(addr, { name: (name || addr).trim(), email: addr, count: 1, lastAt: at });
+    }
+  };
+
+  // People Jeff writes to (strongest signal), incl. cc
+  const sent = await graphGet(
+    '/me/mailFolders/SentItems/messages?$top=200&$orderby=sentDateTime%20desc&$select=toRecipients,ccRecipients,sentDateTime'
+  ) as { value: { toRecipients?: { emailAddress?: { name?: string; address?: string } }[]; ccRecipients?: { emailAddress?: { name?: string; address?: string } }[]; sentDateTime?: string }[] };
+  for (const m of sent.value || []) {
+    const at = m.sentDateTime ? new Date(m.sentDateTime).getTime() : 0;
+    for (const r of [...(m.toRecipients || []), ...(m.ccRecipients || [])]) {
+      addPerson(r.emailAddress?.name, r.emailAddress?.address, at);
+    }
+  }
+
+  // People who write to Jeff
+  const inbox = await graphGet(
+    '/me/mailFolders/inbox/messages?$top=200&$orderby=receivedDateTime%20desc&$select=from,receivedDateTime'
+  ) as { value: { from?: { emailAddress?: { name?: string; address?: string } }; receivedDateTime?: string }[] };
+  for (const m of inbox.value || []) {
+    addPerson(m.from?.emailAddress?.name, m.from?.emailAddress?.address, m.receivedDateTime ? new Date(m.receivedDateTime).getTime() : 0);
+  }
+
+  // Real Outlook contacts (403 until Contacts.Read is consented — tolerated)
+  try {
+    const book = await graphGet('/me/contacts?$top=250&$select=displayName,emailAddresses') as
+      { value: { displayName?: string; emailAddresses?: { address?: string }[] }[] };
+    for (const c of book.value || []) {
+      for (const e of c.emailAddresses || []) addPerson(c.displayName, e.address, 0);
+    }
+  } catch { /* scope not granted yet */ }
+
+  const contacts = [...byEmail.values()].sort((a, b) => b.count - a.count || b.lastAt - a.lastAt).slice(0, 500);
+  setState({ contacts });
+  console.log(`[contacts] directory built: ${contacts.length} people`);
 }

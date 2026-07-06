@@ -33,6 +33,8 @@ export interface Draft {
   status: 'ready' | 'sent' | 'discarded';
   // Graph message id of the email this draft replies to — send as in-thread reply when set
   commId?: string;
+  cc?: string;  // comma-separated additional recipients
+  bcc?: string;
 }
 
 export interface ProposedAction {
@@ -99,6 +101,14 @@ export interface JournalEntry {
   id: string;
   date: string;
   text: string;
+}
+
+// A person from the user's mail history / Outlook address book.
+export interface Contact {
+  name: string;
+  email: string;
+  count: number;   // how often they appear in sent/received mail
+  lastAt: number;  // ms timestamp of most recent interaction
 }
 
 export interface CalEvent {
@@ -227,6 +237,7 @@ export interface ServerState {
   // hidden even if the AI scorer drops it from one sync then re-includes it later.
   commStatusOverrides: Record<string, 'dismissed' | 'snoozed'>;
   dayPlan: DayPlan | null;
+  contacts: Contact[];
 }
 
 function makeHeatmap(rate: number, name: string): boolean[] {
@@ -261,6 +272,7 @@ const seedState: ServerState = {
   userProfile: '',
   commStatusOverrides: {},
   dayPlan: null,
+  contacts: [],
 };
 
 // Deep clone seed so we can reset if needed
@@ -343,6 +355,7 @@ const KEYS = {
   briefingGeneratedAt: 'atlas:briefingGeneratedAt',
   userProfile: 'atlas:userProfile',
   dayPlan: 'atlas:dayPlan',
+  contacts: 'atlas:contacts',
   commStatusOverrides: 'atlas:commStatusOverrides',
 } as const;
 
@@ -407,6 +420,7 @@ async function _persistNow(): Promise<Record<string, string>> {
     trySet(KEYS.briefingGeneratedAt, _state.briefingGeneratedAt),
     trySet(KEYS.userProfile, _state.userProfile),
     trySet(KEYS.dayPlan, _state.dayPlan),
+    trySet(KEYS.contacts, tail(_state.contacts, 500)),
     trySet(KEYS.commStatusOverrides, _state.commStatusOverrides),
   ]);
   const failed = Object.entries(results).filter(([, v]) => v !== 'OK');
@@ -451,7 +465,7 @@ async function _loadOnce(): Promise<void> {
       tasks, comms, drafts, proposedActions, habits, goals, books,
       highlights, ideas, journalEntries, calEvents, health, shopping, knowledge, delegations, calNote,
       adlerNotes, adlerMemory, adlerLastContact,
-      briefingText, briefingNudges, briefingGeneratedAt, userProfile, commStatusOverrides, dayPlan,
+      briefingText, briefingNudges, briefingGeneratedAt, userProfile, commStatusOverrides, dayPlan, contacts,
     ] = await Promise.all([
       redisGet<ServerState['tasks']>(KEYS.tasks),
       redisGet<ServerState['comms']>(KEYS.comms),
@@ -478,6 +492,7 @@ async function _loadOnce(): Promise<void> {
       redisGet<string>(KEYS.userProfile),
       redisGet<ServerState['commStatusOverrides']>(KEYS.commStatusOverrides),
       redisGet<ServerState['dayPlan']>(KEYS.dayPlan),
+      redisGet<ServerState['contacts']>(KEYS.contacts),
     ]);
 
     _state = sanitize({
@@ -506,6 +521,7 @@ async function _loadOnce(): Promise<void> {
       userProfile: typeof userProfile === 'string' ? userProfile : '',
       commStatusOverrides: (commStatusOverrides && typeof commStatusOverrides === 'object' && !Array.isArray(commStatusOverrides)) ? commStatusOverrides : {},
       dayPlan: (dayPlan && typeof dayPlan === 'object' && !Array.isArray(dayPlan) && Array.isArray((dayPlan as { blocks?: unknown }).blocks)) ? dayPlan : null,
+      contacts: Array.isArray(contacts) ? contacts : [],
     });
     console.log(`State restored from Redis: ${_state.tasks.length} tasks`);
   }
@@ -528,7 +544,7 @@ export async function migrateLegacyState(): Promise<void> {
 const ARRAY_FIELDS: (keyof ServerState)[] = [
   'tasks', 'comms', 'drafts', 'proposedActions', 'habits', 'goals',
   'books', 'highlights', 'ideas', 'journalEntries', 'calEvents', 'health', 'shopping', 'knowledge', 'delegations',
-  'adlerMemory', 'briefingNudges',
+  'adlerMemory', 'briefingNudges', 'contacts',
 ];
 
 function sanitize(s: ServerState): ServerState {

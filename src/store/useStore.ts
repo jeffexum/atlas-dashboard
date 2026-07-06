@@ -33,6 +33,8 @@ export interface Draft {
   text: string;
   status: 'ready' | 'sent' | 'discarded';
   commId?: string; // inbox email this replies to (sends in-thread)
+  cc?: string;
+  bcc?: string;
 }
 
 export interface ProposedAction {
@@ -140,6 +142,13 @@ export interface HealthDay {
   activeCalories?: number;
 }
 
+export interface Contact {
+  name: string;
+  email: string;
+  count: number;
+  lastAt: number;
+}
+
 export interface CalEvent {
   id: string;
   title: string;
@@ -203,6 +212,7 @@ interface StoreState {
   userProfile: string;
   assistantName: string;
   dayPlan: DayPlan | null;
+  contacts: Contact[];
   // One-shot handoff: which email the Inbox should expand on next visit
   inboxFocusCommId: string | null;
   userName: string;
@@ -260,6 +270,7 @@ export const useStore = create<StoreState>((set) => ({
   userProfile: '',
   assistantName: 'Adler',
   dayPlan: null,
+  contacts: [],
   inboxFocusCommId: null,
   userName: '',
   toast: null,

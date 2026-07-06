@@ -153,7 +153,7 @@ export async function fetchGmailBody(commId: string): Promise<string> {
 
 // Reply within the Gmail thread — recipients and threading headers derived
 // from the original message; replyAll includes original To/Cc minus self.
-export async function replyGmail(commId: string, body: string, replyAll = false): Promise<void> {
+export async function replyGmail(commId: string, body: string, replyAll = false, extra?: { cc?: string; bcc?: string }): Promise<void> {
   const id = commId.replace(/^gm-/, '');
   const original = await gmailGet<GmailMessage>(`/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Subject&metadataHeaders=Message-ID`);
 
@@ -171,16 +171,20 @@ export async function replyGmail(commId: string, body: string, replyAll = false)
     cc = others.join(', ');
   }
 
-  const raw = [
+  // Merge explicit extra cc with reply-all cc
+  const extraCc = (extra?.cc || '').split(',').map((a) => a.trim()).filter((a) => a.includes('@'));
+  const allCc = [...new Set([...cc.split(',').map((a) => a.trim()).filter(Boolean), ...extraCc])].join(', ');
+  const bcc = (extra?.bcc || '').split(',').map((a) => a.trim()).filter((a) => a.includes('@')).join(', ');
+  const headers = [
     `To: ${to}`,
-    cc ? `Cc: ${cc}` : '',
+    allCc ? `Cc: ${allCc}` : '',
+    bcc ? `Bcc: ${bcc}` : '',
     `Subject: ${subject.startsWith('Re:') ? subject : `Re: ${subject}`}`,
     messageId ? `In-Reply-To: ${messageId}` : '',
     messageId ? `References: ${messageId}` : '',
     'Content-Type: text/plain; charset=UTF-8',
-    '',
-    body,
-  ].filter((l) => l !== '').join('\r\n');
+  ].filter(Boolean);
+  const raw = headers.join('\r\n') + '\r\n\r\n' + body;
 
   const token = await getGoogleAccessToken();
   const res = await fetch(`${GMAIL}/messages/send`, {
@@ -191,14 +195,17 @@ export async function replyGmail(commId: string, body: string, replyAll = false)
   if (!res.ok) throw new Error(`Gmail send returned ${res.status}: ${await res.text()}`);
 }
 
-export async function sendGmail(to: string, subject: string, body: string): Promise<void> {
-  const raw = [
+export async function sendGmail(to: string, subject: string, body: string, extra?: { cc?: string; bcc?: string }): Promise<void> {
+  const cc = (extra?.cc || '').split(',').map((a) => a.trim()).filter((a) => a.includes('@')).join(', ');
+  const bcc = (extra?.bcc || '').split(',').map((a) => a.trim()).filter((a) => a.includes('@')).join(', ');
+  const headers = [
     `To: ${to}`,
+    cc ? `Cc: ${cc}` : '',
+    bcc ? `Bcc: ${bcc}` : '',
     `Subject: ${subject}`,
     'Content-Type: text/plain; charset=UTF-8',
-    '',
-    body,
-  ].join('\r\n');
+  ].filter(Boolean);
+  const raw = headers.join('\r\n') + '\r\n\r\n' + body;
   const token = await getGoogleAccessToken();
   const res = await fetch(`${GMAIL}/messages/send`, {
     method: 'POST',

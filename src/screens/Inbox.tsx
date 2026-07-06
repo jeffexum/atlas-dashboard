@@ -195,6 +195,56 @@ function SchedulerPane({ commId, myTz, onInsert }: { commId: string; myTz?: stri
   );
 }
 
+// Cc/Bcc inputs with contact autocomplete; persists via PATCH /api/drafts/:id
+function CcBccRow({ draft }: { draft: Draft }) {
+  const contacts = useStore((s) => s.contacts);
+  const [open, setOpen] = useState(!!(draft.cc || draft.bcc));
+  const [cc, setCc] = useState(draft.cc || '');
+  const [bcc, setBcc] = useState(draft.bcc || '');
+
+  function save(field: 'cc' | 'bcc', value: string) {
+    fetch(`${API_URL}/api/drafts/${draft.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ [field]: value }),
+    }).catch(() => notifyError('Could not save Cc/Bcc'));
+  }
+
+  const inputStyle: React.CSSProperties = {
+    flex: 1, border: '1px solid var(--line)', borderRadius: 4, padding: '3px 8px',
+    fontSize: 12, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--card)', outline: 'none',
+  };
+
+  if (!open) {
+    return (
+      <div style={{ padding: '4px 12px', borderBottom: '1px solid var(--line2)' }}>
+        <button onClick={() => setOpen(true)}
+          style={{ background: 'none', border: 'none', fontSize: 11, color: 'var(--mut)', cursor: 'pointer', fontFamily: 'inherit', padding: 0 }}>
+          + Cc/Bcc
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '6px 12px', borderBottom: '1px solid var(--line2)' }}>
+      <datalist id={`contacts-${draft.id}`}>
+        {contacts.slice(0, 100).map((c) => <option key={c.email} value={c.email}>{c.name}</option>)}
+      </datalist>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: 11, color: 'var(--mut)', width: 26 }}>Cc</span>
+        <input list={`contacts-${draft.id}`} value={cc} onChange={(e) => setCc(e.target.value)} onBlur={() => save('cc', cc)}
+          placeholder="address, address…" style={inputStyle} />
+      </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: 11, color: 'var(--mut)', width: 26 }}>Bcc</span>
+        <input list={`contacts-${draft.id}`} value={bcc} onChange={(e) => setBcc(e.target.value)} onBlur={() => save('bcc', bcc)}
+          placeholder="address, address…" style={inputStyle} />
+      </div>
+    </div>
+  );
+}
+
 // Inline reply composer — lives inside the expanded email, with Adler refinement
 function DraftComposer({ draft, who, commId }: { draft: Draft; who: string; commId: string }) {
   const saveDraftText = useStore((s) => s.saveDraftText);
@@ -271,6 +321,9 @@ function DraftComposer({ draft, who, commId }: { draft: Draft; who: string; comm
           📅 Suggest times
         </button>
       </div>
+
+      {/* Cc / Bcc */}
+      <CcBccRow draft={draft} />
 
       {/* Editor + optional scheduler pane */}
       <div style={{ display: 'flex', alignItems: 'stretch' }}>

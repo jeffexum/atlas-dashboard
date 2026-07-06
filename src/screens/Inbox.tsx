@@ -469,6 +469,17 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
     URL.revokeObjectURL(url);
   }
 
+  const [sendingOrphan, setSendingOrphan] = useState<string | null>(null);
+  const sendDraftAction = useStore((st) => st.sendDraft);
+  const discardDraftAction = useStore((st) => st.discardDraft);
+
+  async function sendOrphanDraft(id: string) {
+    if (sendingOrphan) return;
+    setSendingOrphan(id);
+    try { sendDraftAction(id); } finally { setTimeout(() => setSendingOrphan(null), 1500); }
+  }
+  function discardOrphan(id: string) { discardDraftAction(id); }
+
   async function handleDraftReply(commId: string) {
     if (draftedId) return; // guard against double-clicks producing duplicate drafts
     setDraftedId(commId);
@@ -560,6 +571,39 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
             </div>
           </div>
         )}
+
+        {/* Ready drafts whose email isn't in the visible list (aged out of the
+            sync window, or standalone new-thread drafts like delegation nudges) */}
+        {(() => {
+          const visibleIds = new Set(allComms.map((c) => c.id));
+          const orphans = drafts.filter((d) => d.status === 'ready' && (!d.commId || !visibleIds.has(d.commId)));
+          if (!orphans.length) return null;
+          return (
+            <div style={{ ...cardBase, marginBottom: 14, borderLeft: '4px solid var(--violet)' }}>
+              <div style={{ ...eyebrow, marginBottom: 10 }}>Other ready drafts</div>
+              {orphans.map((d, i) => (
+                <div key={d.id} style={{ borderTop: i ? '1px solid var(--line2)' : 'none', paddingTop: i ? 10 : 0, marginTop: i ? 10 : 0 }}>
+                  <div style={{ fontSize: 12, color: 'var(--mut)', marginBottom: 4 }}>
+                    <span style={{ color: 'var(--ink2)', fontWeight: 500 }}>To:</span> {d.to}
+                    <span style={{ marginLeft: 10, color: 'var(--ink2)', fontWeight: 500 }}>Re:</span> {d.re}
+                    {d.commId && <span style={{ marginLeft: 8, fontSize: 10, color: 'var(--faint)' }}>(replies in-thread — original email no longer in view)</span>}
+                  </div>
+                  <div style={{ fontSize: 12.5, color: 'var(--ink2)', whiteSpace: 'pre-wrap', lineHeight: 1.6, maxHeight: 130, overflowY: 'auto', background: 'var(--bg)', borderRadius: 6, padding: '8px 10px', marginBottom: 8 }}>{d.text}</div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => sendOrphanDraft(d.id)} disabled={sendingOrphan === d.id}
+                      style={{ padding: '4px 14px', fontSize: 12, fontWeight: 600, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit', opacity: sendingOrphan === d.id ? 0.6 : 1 }}>
+                      {sendingOrphan === d.id ? 'Sending…' : 'Send'}
+                    </button>
+                    <button onClick={() => discardOrphan(d.id)}
+                      style={{ padding: '4px 12px', fontSize: 12, background: 'transparent', color: 'var(--mut)', border: '1px solid var(--line)', borderRadius: 5, cursor: 'pointer', fontFamily: 'inherit' }}>
+                      Discard
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })()}
 
         {/* Source toggle: All / Work (Outlook) / Personal (Gmail) */}
         <div style={{ display: 'inline-flex', gap: 2, padding: 2, marginBottom: 14, background: 'var(--bg)', border: '1px solid var(--line)', borderRadius: 8 }}>

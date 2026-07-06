@@ -354,6 +354,16 @@ app.post('/api/drafts/send', async (req: Request, res: Response) => {
 });
 
 // Persist manual edits to a draft
+app.post('/api/drafts/:id/status', async (req: Request, res: Response) => {
+  const { status } = req.body as { status?: 'ready' | 'discarded' };
+  if (status !== 'ready' && status !== 'discarded') { res.status(400).json({ error: 'status must be ready|discarded' }); return; }
+  const s = getState();
+  if (!s.drafts.some((d) => d.id === req.params.id)) { res.status(404).json({ error: 'draft not found' }); return; }
+  setState({ drafts: s.drafts.map((d) => d.id === req.params.id ? { ...d, status } : d) });
+  await persistNow();
+  res.json({ ok: true });
+});
+
 app.patch('/api/drafts/:id', async (req: Request, res: Response) => {
   const { text } = req.body as { text: string };
   const s = getState();

@@ -321,15 +321,23 @@ export const useStore = create<StoreState>((set) => ({
     });
   },
 
-  discardDraft: (id) =>
+  discardDraft: (id) => {
     set((state) => ({
       drafts: state.drafts.map((d) => (d.id === id ? { ...d, status: 'discarded' } : d)),
-    })),
+    }));
+    fetch(`${API_URL}/api/drafts/${id}/status`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'discarded' }),
+    }).catch(() => {});
+  },
 
-  undoDiscardDraft: (id) =>
+  undoDiscardDraft: (id) => {
     set((state) => ({
       drafts: state.drafts.map((d) => (d.id === id ? { ...d, status: 'ready' } : d)),
-    })),
+    }));
+    fetch(`${API_URL}/api/drafts/${id}/status`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'ready' }),
+    }).catch(() => {});
+  },
 
   updateDraftText: (id, text) =>
     set((state) => ({

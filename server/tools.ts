@@ -453,6 +453,12 @@ export async function executeTool(name: string, input: Record<string, unknown>):
         await sendEmail(input.to as string, input.subject as string, input.body as string);
         return `Email sent to ${input.to}.`;
       case 'create_draft': {
+        // Dedup guard: the agent loop occasionally repeats a tool call. One ready
+        // draft per thread — edit or refine it instead of stacking near-duplicates.
+        if (input.commId) {
+          const existing = getState().drafts.find((d) => d.commId === input.commId && d.status === 'ready');
+          if (existing) return 'A ready draft for this email already exists (id ' + existing.id + ') — update it with save/refine instead of creating another.';
+        }
         const draft: state.Draft = {
           id: `d-${Date.now()}`,
           to: input.to as string,

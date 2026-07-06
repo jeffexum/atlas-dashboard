@@ -135,7 +135,9 @@ export function buildContext(): string {
   // Email content is UNTRUSTED third-party data. Wrap each body in explicit markers
   // and neutralize marker-spoofing so a malicious sender can't inject instructions.
   const sanitizeUntrusted = (t: string) => t.replace(/‹\/?untrusted[^›]*›/gi, '').slice(0, 400).replace(/\n/g, ' ');
-  const commLines = s.comms.filter((c) => c.status === 'open').slice(0, 20).map((c) =>
+  const openAll = s.comms.filter((c) => c.status === 'open');
+  const commOrder = [...openAll].sort((x, y) => (x.priority > y.priority ? 1 : x.priority < y.priority ? -1 : 0));
+  const commLines = commOrder.slice(0, 30).map((c) =>
     `  [${c.id}] ${c.priority.toUpperCase()} from ${c.who} <${c.email || '?'}>: "${c.subject}"\n    ‹untrusted-email-content›${sanitizeUntrusted(c.body || c.preview)}‹/untrusted-email-content›`
   );
 
@@ -173,7 +175,7 @@ ${taskLines.join('\n') || '  none'}
 HABITS (use exact IDs for log_habit):
 ${habitLines.join('\n')}
 
-INBOX — open emails with excerpts (use exact IDs for reply_to_email / read_email / snooze_comm / add_todo_from_comm):
+INBOX — ${openAll.length} open emails total; the ${Math.min(30, openAll.length)} highest-priority shown below. Use search_inbox to find ANY other email by sender/subject (never claim an email doesn't exist without searching). Use exact IDs for reply_to_email / read_email / snooze_comm / add_todo_from_comm:
 ${commLines.join('\n') || '  none'}
 
 PENDING DRAFTS (use exact IDs for send_draft / discard_draft / workshop_draft):

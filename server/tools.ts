@@ -112,6 +112,11 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
     }, required: ['title', 'calendar', 'date', 'startHour'] },
   },
   {
+    name: 'search_inbox',
+    description: "Search ALL open inbox emails by sender name or subject keywords (the context only shows a subset). Returns matching ids + excerpts; use read_email for full bodies.",
+    input_schema: { type: 'object' as const, properties: { query: { type: 'string' } }, required: ['query'] },
+  },
+  {
     name: 'update_draft',
     description: "Update an existing draft's text (and optionally cc/bcc). Use this to revise a draft after workshopping it — create_draft refuses duplicates for a thread that already has one.",
     input_schema: { type: 'object' as const, properties: { draftId: { type: 'string' }, text: { type: 'string' }, cc: { type: 'string' }, bcc: { type: 'string' } }, required: ['draftId', 'text'] },
@@ -444,6 +449,20 @@ export async function executeTool(name: string, input: Record<string, unknown>):
           return `Failed to delete event: ${(err as Error).message}`;
         }
         return 'Calendar event deleted.';
+      }
+      case 'search_inbox': {
+        const q = String(input.query || '').toLowerCase().trim();
+        if (!q) return 'Provide a search query.';
+        const words = q.split(/\s+/);
+        const hits = getState().comms
+          .filter((c) => c.status === 'open')
+          .filter((c) => {
+            const hay = `${c.who} ${c.email || ''} ${c.subject} ${c.preview}`.toLowerCase();
+            return words.every((w) => hay.includes(w)) || words.some((w) => w.length > 3 && hay.includes(w));
+          })
+          .slice(0, 10);
+        if (!hits.length) return `No open emails matching "${q}".`;
+        return hits.map((c) => `[${c.id}] ${c.priority.toUpperCase()} from ${c.who} <${c.email || '?'}> — "${c.subject}"\n  ${(c.preview || '').slice(0, 150)}`).join('\n');
       }
       case 'update_draft': {
         const draftId = input.draftId as string;

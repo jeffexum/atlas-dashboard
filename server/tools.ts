@@ -427,13 +427,15 @@ export async function executeTool(name: string, input: Record<string, unknown>):
             failed.push(`${b.title}: ${(err as Error).message.slice(0, 120)}`);
           }
         }
-        setState({ dayPlan: { ...plan, blocks: updatedBlocks, status: 'confirmed', updatedAt: Date.now() } });
+        // Only claim confirmed when every requested booking landed; otherwise stay
+        // draft so the UI keeps offering Confirm & book for a retry after re-auth.
+        setState({ dayPlan: { ...plan, blocks: updatedBlocks, status: failed.length ? 'draft' : 'confirmed', updatedAt: Date.now() } });
         await persistNow();
         // Refresh dashboard calendars so booked blocks appear
         try { if (booked.some((x) => x.includes('work'))) await syncCalendar(); } catch { /* non-fatal */ }
         try { if (booked.some((x) => x.includes('personal'))) await syncGoogleCalendar(); } catch { /* non-fatal */ }
         const emailComms = updatedBlocks.filter((b) => b.kind === 'email').flatMap((b) => b.commIds || []);
-        return `Day plan confirmed. Booked ${booked.length} block(s)${booked.length ? `: ${booked.join('; ')}` : ''}.${failed.length ? ` FAILED: ${failed.join('; ')}.` : ''}${emailComms.length ? ` Now create drafts (create_draft with commId) for these ${emailComms.length} emails in the email block: ${emailComms.join(', ')}.` : ''}`;
+        return `${failed.length ? `Day plan NOT fully confirmed — ${failed.length} booking(s) FAILED (plan stays draft; fix the connection and confirm again): ${failed.join('; ')}. ` : 'Day plan confirmed. '}Booked ${booked.length} block(s)${booked.length ? `: ${booked.join('; ')}` : ''}.${emailComms.length ? ` Now create drafts (create_draft with commId) for these ${emailComms.length} emails in the email block: ${emailComms.join(', ')}.` : ''}`;
       }
       case 'delete_calendar_event': {
         const eventId = input.eventId as string;

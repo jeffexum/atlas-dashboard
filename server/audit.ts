@@ -81,18 +81,21 @@ export async function audit(actor: AuditRow['actor'], action: string, objectRef?
 }
 
 // Track a completed Anthropic call. Pass the response's model + usage.
-export async function trackModelCall(purpose: string, model: string, usage?: { input_tokens?: number; output_tokens?: number } | null): Promise<void> {
+// Cache writes bill at 1.25x input, cache reads at 0.1x.
+export async function trackModelCall(purpose: string, model: string, usage?: { input_tokens?: number; output_tokens?: number; cache_creation_input_tokens?: number; cache_read_input_tokens?: number } | null): Promise<void> {
   await ensureLoaded();
   const input = usage?.input_tokens || 0;
   const output = usage?.output_tokens || 0;
+  const cacheWrite = usage?.cache_creation_input_tokens || 0;
+  const cacheRead = usage?.cache_read_input_tokens || 0;
   const [pin, pout] = priceFor(model);
   _runs.push({
     ts: Date.now(),
     purpose,
     model,
-    inputTokens: input,
+    inputTokens: input + cacheWrite + cacheRead,
     outputTokens: output,
-    costUsd: (input * pin + output * pout) / 1_000_000,
+    costUsd: (input * pin + cacheWrite * pin * 1.25 + cacheRead * pin * 0.1 + output * pout) / 1_000_000,
   });
   if (_runs.length > 2200) _runs = _runs.slice(-2000);
   scheduleFlush();

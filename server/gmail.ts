@@ -95,12 +95,17 @@ async function _syncGmail(): Promise<void> {
     return !isAutomated(email, header(m, 'Subject'));
   });
 
-  const { actionable, urgent } = await scoreEmails(candidates.map((m) => ({
+  const alreadyTriaged = new Set(getState().triagedIds);
+  const toScore = candidates.filter((m) => !alreadyTriaged.has(`gm-${m.id}`));
+  const { actionable, urgent } = await scoreEmails(toScore.map((m) => ({
     id: m.id,
     from: header(m, 'From'),
     subject: header(m, 'Subject'),
     preview: m.snippet || '',
   })));
+  if (toScore.length) {
+    setState({ triagedIds: [...getState().triagedIds, ...toScore.map((m) => `gm-${m.id}`)].slice(-4000) });
+  }
 
   const comms: Comm[] = candidates
     .filter((m) => actionable.has(m.id))

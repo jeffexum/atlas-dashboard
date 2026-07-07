@@ -259,7 +259,9 @@ export async function runAdler(userMessage: string): Promise<string> {
     const response = await getClient().messages.create({
       model: MODELS.standard,
       max_tokens: 2048,
-      system,
+      // Cache the (large) system prompt + tools: iterations 2-8 of this loop and
+      // any call within 5 min re-read it at 10% of input price.
+      system: [{ type: 'text' as const, text: system, cache_control: { type: 'ephemeral' as const } }],
       tools: ASSISTANT_TOOLS,
       messages,
     });
@@ -383,7 +385,7 @@ ${buildPartnerContext()}`;
     const response = await getClient().messages.create({
       model: MODELS.cheap,
       max_tokens: 1024,
-      system,
+      system: [{ type: 'text' as const, text: system, cache_control: { type: 'ephemeral' as const } }],
       tools: PARTNER_TOOLS,
       messages,
     });

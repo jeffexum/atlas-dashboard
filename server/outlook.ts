@@ -575,13 +575,21 @@ async function _syncMail(): Promise<void> {
     return true;
   });
 
-  // AI scoring — chunked Haiku triage with urgency flags
-  const { actionable, urgent } = await scoreEmails(candidates.map((m) => ({
+  // AI scoring — chunked Haiku triage with urgency flags. Each message is
+  // scored ONCE ever (triagedIds); previously-included ones persist via the
+  // sticky carry below, previously-excluded ones stay excluded. This cut the
+  // triage token bill ~95%: syncs used to re-score the whole window.
+  const alreadyTriaged = new Set(getState().triagedIds);
+  const toScore = candidates.filter((m) => !alreadyTriaged.has(m.id));
+  const { actionable, urgent } = await scoreEmails(toScore.map((m) => ({
     id: m.id,
     from: m.from?.emailAddress?.name || m.from?.emailAddress?.address || '',
     subject: m.subject || '',
     preview: m.bodyPreview?.slice(0, 200) || '',
   })));
+  if (toScore.length) {
+    setState({ triagedIds: [...getState().triagedIds, ...toScore.map((m) => m.id)].slice(-4000) });
+  }
 
   const comms = candidates
     .filter((m) => actionable.has(m.id))

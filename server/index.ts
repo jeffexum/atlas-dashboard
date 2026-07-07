@@ -989,21 +989,35 @@ if (TELEGRAM_TOKEN && WEBHOOK_BASE) {
   console.log('Telegram not configured (missing TELEGRAM_BOT_TOKEN or WEBHOOK_URL)');
 }
 
-// ── Adler proactive check (every 10 min, Adler decides whether to reach out) ─
-
+// ── Adler proactive check ─────────────────────────────────────────────────────
+// Every 30 min, waking hours only, and skipped entirely when nothing relevant
+// changed since the last check — this ran every 10 min with the full context
+// (~20k tokens) around the clock and was a top token burner.
+let _lastProactiveFingerprint = '';
 setInterval(async () => {
   if (!bot || activeChatIds.size === 0) return;
+  const hour = parseInt(new Date().toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: USER.tz }), 10);
+  if (hour < 7 || hour >= 21) return; // let the man sleep
+  const s = getState();
+  const fingerprint = [
+    s.comms.filter((c) => c.status === 'open').map((c) => c.id).join(','),
+    s.tasks.map((t) => `${t.id}${t.done ? 1 : 0}${t.column}`).join(','),
+    s.habits.map((h) => `${h.id}${h.completedToday ? 1 : 0}`).join(','),
+    s.dayPlan?.updatedAt || 0,
+  ].join('|');
+  if (fingerprint === _lastProactiveFingerprint) return; // nothing new to react to
+  _lastProactiveFingerprint = fingerprint;
   try {
     const message = await adlerProactiveCheck();
     if (message) {
       activeChatIds.forEach((chatId) => {
-        bot!.sendMessage(chatId, `🧠 *Adler*\n\n${message}`, { parse_mode: 'Markdown' });
+        bot!.sendMessage(chatId, `🧠 *Adler*\n\n${message}`, { parse_mode: 'Markdown' }).catch(() => {});
       });
     }
   } catch (err) {
     console.error('Adler proactive check error:', err);
   }
-}, 10 * 60_000);
+}, 30 * 60_000);
 
 // Hourly: refresh habit derived fields so day rollover resets "done today" and streaks,
 // and sweep delegation statuses (open → nudged at T-1 → slipped past due)

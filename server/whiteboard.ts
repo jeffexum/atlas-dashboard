@@ -161,7 +161,7 @@ export async function chat(history: ChatMessage[]): Promise<string> {
     const response = await getClient().messages.create({
       model: MODELS.standard,
       max_tokens: 4096,
-      system,
+      system: [{ type: 'text' as const, text: system, cache_control: { type: 'ephemeral' as const } }],
       tools: ASSISTANT_TOOLS,
       messages,
     });

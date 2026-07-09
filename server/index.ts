@@ -1033,6 +1033,19 @@ setInterval(() => {
   if (isGmailConnected()) syncGmail().catch(() => {});
 }, 30 * 60_000);
 
+// Manual briefing send — verifies the Telegram delivery path end to end.
+app.post('/api/admin/send-briefing', async (_req: Request, res: Response) => {
+  if (!bot) { res.status(503).json({ error: 'telegram not configured' }); return; }
+  const owners = ownerChatIds();
+  if (!owners.length) { res.status(404).json({ error: 'no owner chat ids known' }); return; }
+  try {
+    await Promise.all(owners.map((chatId) => sendMorningBriefing(bot!, chatId)));
+    res.json({ ok: true, sentTo: owners.length });
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
 // ── Morning briefing at 7am ───────────────────────────────────────────────────
 
 let _lastBriefingDate = new Date().toLocaleDateString('en-CA', { timeZone: USER.tz }); // don't re-send for today on boot

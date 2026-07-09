@@ -143,6 +143,17 @@ export interface HealthDay {
   activeCalories?: number;
 }
 
+export interface Note {
+  id: string;
+  title: string;
+  body: string;
+  tags: string[];
+  pinned?: boolean;
+  color?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface Contact {
   name: string;
   email: string;
@@ -214,6 +225,7 @@ interface StoreState {
   assistantName: string;
   dayPlan: DayPlan | null;
   contacts: Contact[];
+  notes: Note[];
   // One-shot handoff: which email the Inbox should expand on next visit
   inboxFocusCommId: string | null;
   userName: string;
@@ -245,7 +257,14 @@ interface StoreState {
   reorderBook: (id: string, direction: 'up' | 'down') => void;
   startReading: (id: string) => void;
   addIdea: (title: string, body: string, tags: string[]) => void;
+  editIdea: (id: string, updates: Partial<Pick<Idea, 'title' | 'body' | 'tags'>>) => void;
+  deleteIdea: (id: string) => void;
   addJournalEntry: (text: string) => void;
+  editJournalEntry: (id: string, text: string) => void;
+  deleteJournalEntry: (id: string) => void;
+  addNote: (title: string, body: string, tags: string[]) => void;
+  updateNote: (id: string, updates: Partial<Pick<Note, 'title' | 'body' | 'tags' | 'pinned'>>) => void;
+  deleteNote: (id: string) => void;
   addCalEvent: (event: Omit<CalEvent, 'id'>) => void;
   updateCalNote: (text: string) => void;
 }
@@ -272,6 +291,7 @@ export const useStore = create<StoreState>((set) => ({
   assistantName: 'Adler',
   dayPlan: null,
   contacts: [],
+  notes: [],
   inboxFocusCommId: null,
   userName: '',
   toast: null,
@@ -563,6 +583,42 @@ export const useStore = create<StoreState>((set) => ({
     persistCollection('ideas', useStore.getState().ideas);
   },
 
+  editIdea: (id, updates) => {
+    set((state) => ({ ideas: state.ideas.map((i) => (i.id === id ? { ...i, ...updates } : i)) }));
+    persistCollection('ideas', useStore.getState().ideas);
+  },
+
+  deleteIdea: (id) => {
+    set((state) => ({ ideas: state.ideas.filter((i) => i.id !== id) }));
+    persistCollection('ideas', useStore.getState().ideas);
+  },
+
+  editJournalEntry: (id, text) => {
+    set((state) => ({ journalEntries: state.journalEntries.map((j) => (j.id === id ? { ...j, text } : j)) }));
+    persistCollection('journalEntries', useStore.getState().journalEntries);
+  },
+
+  deleteJournalEntry: (id) => {
+    set((state) => ({ journalEntries: state.journalEntries.filter((j) => j.id !== id) }));
+    persistCollection('journalEntries', useStore.getState().journalEntries);
+  },
+
+  addNote: (title, body, tags) => {
+    const now = Date.now();
+    set((state) => ({ notes: [{ id: `n-${now}`, title, body, tags, createdAt: now, updatedAt: now }, ...state.notes] }));
+    persistCollection('notes', useStore.getState().notes);
+  },
+
+  updateNote: (id, updates) => {
+    set((state) => ({ notes: state.notes.map((n) => (n.id === id ? { ...n, ...updates, updatedAt: Date.now() } : n)) }));
+    persistCollection('notes', useStore.getState().notes);
+  },
+
+  deleteNote: (id) => {
+    set((state) => ({ notes: state.notes.filter((n) => n.id !== id) }));
+    persistCollection('notes', useStore.getState().notes);
+  },
+
   addJournalEntry: (text) => {
     const date = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     set((state) => ({ journalEntries: [{ id: `j-${Date.now()}`, date, text }, ...state.journalEntries] }));
@@ -587,7 +643,7 @@ export function notifyError(msg: string) { useStore.setState({ toast: { kind: 'e
 export function notifyOk(msg: string) { useStore.setState({ toast: { kind: 'ok', msg } }); }
 
 // Persist a user-authored collection; surface failures rather than losing data silently.
-async function persistCollection(name: 'goals' | 'books' | 'ideas' | 'journalEntries' | 'calEvents', items: unknown[]) {
+async function persistCollection(name: 'goals' | 'books' | 'ideas' | 'journalEntries' | 'calEvents' | 'notes', items: unknown[]) {
   try {
     const res = await fetch(`${API_URL}/api/collection/${name}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }),

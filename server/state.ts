@@ -104,6 +104,18 @@ export interface JournalEntry {
   text: string;
 }
 
+// Freeform note (Notes panel): editable, taggable, pinnable.
+export interface Note {
+  id: string;
+  title: string;
+  body: string;
+  tags: string[];
+  pinned?: boolean;
+  color?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 // A person from the user's mail history / Outlook address book.
 export interface Contact {
   name: string;
@@ -241,6 +253,7 @@ export interface ServerState {
   contacts: Contact[];
   // Message ids the triage scorer has already judged — each email is scored once.
   triagedIds: string[];
+  notes: Note[];
 }
 
 function makeHeatmap(rate: number, name: string): boolean[] {
@@ -277,6 +290,7 @@ const seedState: ServerState = {
   dayPlan: null,
   contacts: [],
   triagedIds: [],
+  notes: [],
 };
 
 // Deep clone seed so we can reset if needed
@@ -361,6 +375,7 @@ const KEYS = {
   dayPlan: 'atlas:dayPlan',
   contacts: 'atlas:contacts',
   triagedIds: 'atlas:triagedIds',
+  notes: 'atlas:notes',
   commStatusOverrides: 'atlas:commStatusOverrides',
 } as const;
 
@@ -427,6 +442,7 @@ async function _persistNow(): Promise<Record<string, string>> {
     trySet(KEYS.dayPlan, _state.dayPlan),
     trySet(KEYS.contacts, tail(_state.contacts, 500)),
     trySet(KEYS.triagedIds, tail(_state.triagedIds, 4000)),
+    trySet(KEYS.notes, tail(_state.notes, 1000)),
     trySet(KEYS.commStatusOverrides, _state.commStatusOverrides),
   ]);
   const failed = Object.entries(results).filter(([, v]) => v !== 'OK');
@@ -471,7 +487,7 @@ async function _loadOnce(): Promise<void> {
       tasks, comms, drafts, proposedActions, habits, goals, books,
       highlights, ideas, journalEntries, calEvents, health, shopping, knowledge, delegations, calNote,
       adlerNotes, adlerMemory, adlerLastContact,
-      briefingText, briefingNudges, briefingGeneratedAt, userProfile, commStatusOverrides, dayPlan, contacts, triagedIds,
+      briefingText, briefingNudges, briefingGeneratedAt, userProfile, commStatusOverrides, dayPlan, contacts, triagedIds, notes,
     ] = await Promise.all([
       redisGet<ServerState['tasks']>(KEYS.tasks),
       redisGet<ServerState['comms']>(KEYS.comms),
@@ -500,6 +516,7 @@ async function _loadOnce(): Promise<void> {
       redisGet<ServerState['dayPlan']>(KEYS.dayPlan),
       redisGet<ServerState['contacts']>(KEYS.contacts),
       redisGet<ServerState['triagedIds']>(KEYS.triagedIds),
+      redisGet<ServerState['notes']>(KEYS.notes),
     ]);
 
     _state = sanitize({
@@ -530,6 +547,7 @@ async function _loadOnce(): Promise<void> {
       dayPlan: (dayPlan && typeof dayPlan === 'object' && !Array.isArray(dayPlan) && Array.isArray((dayPlan as { blocks?: unknown }).blocks)) ? dayPlan : null,
       contacts: Array.isArray(contacts) ? contacts : [],
       triagedIds: Array.isArray(triagedIds) ? triagedIds : [],
+      notes: Array.isArray(notes) ? notes : [],
     });
     console.log(`State restored from Redis: ${_state.tasks.length} tasks`);
   }
@@ -552,7 +570,7 @@ export async function migrateLegacyState(): Promise<void> {
 const ARRAY_FIELDS: (keyof ServerState)[] = [
   'tasks', 'comms', 'drafts', 'proposedActions', 'habits', 'goals',
   'books', 'highlights', 'ideas', 'journalEntries', 'calEvents', 'health', 'shopping', 'knowledge', 'delegations',
-  'adlerMemory', 'briefingNudges', 'contacts', 'triagedIds',
+  'adlerMemory', 'briefingNudges', 'contacts', 'triagedIds', 'notes',
 ];
 
 function sanitize(s: ServerState): ServerState {

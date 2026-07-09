@@ -148,7 +148,7 @@ app.post('/api/state', (req: Request, res: Response) => {
 
 // Persist a user-authored collection (goals, books, ideas, journal, manual calendar
 // events). Whitelisted so it can't overwrite server-owned collections like comms.
-const WRITABLE_COLLECTIONS = new Set(['goals', 'books', 'ideas', 'journalEntries', 'calEvents']);
+const WRITABLE_COLLECTIONS = new Set(['goals', 'books', 'ideas', 'journalEntries', 'calEvents', 'notes']);
 app.put('/api/collection/:name', async (req: Request, res: Response) => {
   const name = String(req.params.name);
   if (!WRITABLE_COLLECTIONS.has(name)) { res.status(400).json({ error: 'not a writable collection' }); return; }

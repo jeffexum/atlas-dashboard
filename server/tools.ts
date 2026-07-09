@@ -112,6 +112,11 @@ export const ASSISTANT_TOOLS: Anthropic.Tool[] = [
     }, required: ['title', 'calendar', 'date', 'startHour'] },
   },
   {
+    name: 'add_note',
+    description: "Save a freeform note to the user's Notes panel (title + body + optional tags). Use when the user says 'note this down', dictates a thought, or asks to save reference info.",
+    input_schema: { type: 'object' as const, properties: { title: { type: 'string' }, body: { type: 'string' }, tags: { type: 'array', items: { type: 'string' } } }, required: ['title', 'body'] },
+  },
+  {
     name: 'search_inbox',
     description: "Search ALL open inbox emails by sender name or subject keywords (the context only shows a subset). Returns matching ids + excerpts; use read_email for full bodies.",
     input_schema: { type: 'object' as const, properties: { query: { type: 'string' } }, required: ['query'] },
@@ -451,6 +456,20 @@ export async function executeTool(name: string, input: Record<string, unknown>):
           return `Failed to delete event: ${(err as Error).message}`;
         }
         return 'Calendar event deleted.';
+      }
+      case 'add_note': {
+        const now = Date.now();
+        const note = {
+          id: `n-${now}`,
+          title: String(input.title || 'Untitled'),
+          body: String(input.body || ''),
+          tags: Array.isArray(input.tags) ? (input.tags as string[]).slice(0, 8) : [],
+          createdAt: now,
+          updatedAt: now,
+        };
+        setState({ notes: [note, ...getState().notes] });
+        await persistNow();
+        return `Note "${note.title}" saved.`;
       }
       case 'search_inbox': {
         const q = String(input.query || '').toLowerCase().trim();

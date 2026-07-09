@@ -187,6 +187,9 @@ ${calLines.join('\n') || '  nothing scheduled'}
 FREE TIME SLOTS (≥1h, 8am–6pm, both calendars considered):
 ${gapLines.join('\n') || '  none in the next 3 days'}
 
+NOTES (user's notes panel — add with add_note; titles only, newest first):
+${s.notes.slice(0, 15).map((n) => `  ${n.title}${n.tags.length ? ` [#${n.tags.join(' #')}]` : ''}`).join('\n') || '  none'}
+
 DAY PLAN (Day Builder — revise with set_day_plan, lock with confirm_day_plan):
 ${s.dayPlan ? `  ${s.dayPlan.date} [${s.dayPlan.status.toUpperCase()}]\n` + s.dayPlan.blocks.map((b) => {
     const fmt = (h: number) => { const hr = Math.floor(h); const m = h % 1 ? ':30' : ''; return hr === 12 ? `12${m}pm` : hr > 12 ? `${hr - 12}${m}pm` : `${hr}${m}am`; };

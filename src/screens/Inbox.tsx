@@ -241,7 +241,7 @@ function AttachmentsBar({ commId, onPreview }: { commId: string; onPreview: (com
 function AttachmentPreview({ commId, att, onClose }: { commId: string; att: AttachMeta; onClose: () => void }) {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const url = `${API_URL}/api/comms/${encodeURIComponent(commId)}/attachments/${encodeURIComponent(att.id)}`;
+  const url = `${API_URL}/api/comms/${encodeURIComponent(commId)}/attachments/${encodeURIComponent(att.id)}?type=${encodeURIComponent(att.contentType)}&name=${encodeURIComponent(att.name)}`;
   const isImage = att.contentType.startsWith('image/');
   const isPdf = att.contentType === 'application/pdf';
   const isText = att.contentType.startsWith('text/');

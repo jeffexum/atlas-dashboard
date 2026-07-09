@@ -574,11 +574,13 @@ app.get('/api/comms/:id/attachments/:aid', async (req: Request, res: Response) =
   const aid = String(req.params.aid);
   try {
     if (id.startsWith('gm-')) {
-      // Gmail returns raw bytes; name/type come from the (cheap) list call
-      const meta = (await listGmailAttachments(id)).find((a) => a.id === aid);
+      // Gmail attachment ids rotate between message fetches, so a server-side
+      // re-list can't recover name/type — the client passes them from its list.
       const { data } = await getGmailAttachment(id, aid);
-      res.setHeader('Content-Type', meta?.contentType || 'application/octet-stream');
-      res.setHeader('Content-Disposition', `inline; filename="${(meta?.name || 'attachment').replace(/"/g, '')}"`);
+      const ct = typeof req.query.type === 'string' && /^[\w.+-]+\/[\w.+-]+$/.test(req.query.type) ? req.query.type : 'application/octet-stream';
+      const name = (typeof req.query.name === 'string' ? req.query.name : 'attachment').replace(/["\r\n]/g, '');
+      res.setHeader('Content-Type', ct);
+      res.setHeader('Content-Disposition', `inline; filename="${name}"`);
       res.send(data);
     } else {
       const { data, contentType, name } = await getOutlookAttachment(id, aid);

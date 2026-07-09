@@ -38,6 +38,13 @@ async function loadTgUsers(): Promise<void> {
     tgUsers[OWNER_CHAT_ID] = { role: 'owner', name: USER.firstName };
     await saveTgUsers();
   }
+  // Known users are reachable immediately after a restart — previously
+  // activeChatIds only filled when a message arrived, so every deploy
+  // silenced morning briefings and proactive check-ins until the user texted.
+  for (const id of Object.keys(tgUsers)) {
+    if (/^-?\d+$/.test(id)) activeChatIds.add(Number(id));
+  }
+  console.log(`[telegram] loaded ${Object.keys(tgUsers).length} users; ${activeChatIds.size} reachable`);
 }
 
 async function saveTgUsers(): Promise<void> {

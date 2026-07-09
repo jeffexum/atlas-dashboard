@@ -19,7 +19,7 @@ import { addDelegation, setDelegationStatus, deleteDelegation, extractDelegation
 import { chat, extractAndApply, saveSession, getSessions } from './whiteboard.js';
 import { createCritical } from './models.js';
 import type { ChatMessage } from './whiteboard.js';
-import { createTelegramBot, activeChatIds, sendMorningBriefing, sendHabitReminder } from './telegram.js';
+import { createTelegramBot, activeChatIds, ownerChatIds, sendMorningBriefing, sendHabitReminder } from './telegram.js';
 
 const app = express();
 const BOOTED_AT = new Date().toISOString();
@@ -995,7 +995,7 @@ if (TELEGRAM_TOKEN && WEBHOOK_BASE) {
 // (~20k tokens) around the clock and was a top token burner.
 let _lastProactiveFingerprint = '';
 setInterval(async () => {
-  if (!bot || activeChatIds.size === 0) return;
+  if (!bot || ownerChatIds().length === 0) return;
   const hour = parseInt(new Date().toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: USER.tz }), 10);
   if (hour < 7 || hour >= 21) return; // let the man sleep
   const s = getState();
@@ -1010,7 +1010,7 @@ setInterval(async () => {
   try {
     const message = await adlerProactiveCheck();
     if (message) {
-      activeChatIds.forEach((chatId) => {
+      ownerChatIds().forEach((chatId) => {
         bot!.sendMessage(chatId, `🧠 *Adler*\n\n${message}`, { parse_mode: 'Markdown' }).catch(() => {});
       });
     }
@@ -1035,12 +1035,18 @@ setInterval(() => {
 
 // ── Morning briefing at 7am ───────────────────────────────────────────────────
 
+let _lastBriefingDate = new Date().toLocaleDateString('en-CA', { timeZone: USER.tz }); // don't re-send for today on boot
+
 setInterval(() => {
   const now = new Date();
   const denverHour = parseInt(now.toLocaleTimeString('en-US', { hour: 'numeric', hour12: false, timeZone: USER.tz }), 10);
-  if (denverHour === 7 && now.getMinutes() === 0) {
-    generateBriefing();
-    if (bot) activeChatIds.forEach((chatId) => sendMorningBriefing(bot!, chatId));
+  // Once-per-day gate instead of an exact minute match — a 60s interval can
+  // skip minute :00 under timer drift, silently dropping the day's briefing.
+  const denverDate = now.toLocaleDateString('en-CA', { timeZone: USER.tz });
+  if (denverHour >= 7 && _lastBriefingDate !== denverDate) {
+    _lastBriefingDate = denverDate;
+    generateBriefing().catch(() => {});
+    if (bot) ownerChatIds().forEach((chatId) => sendMorningBriefing(bot!, chatId).catch(() => {}));
   }
 }, 60_000);
 

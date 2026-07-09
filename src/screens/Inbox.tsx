@@ -195,6 +195,109 @@ function SchedulerPane({ commId, myTz, onInsert }: { commId: string; myTz?: stri
   );
 }
 
+// ── Attachments: chips under an expanded email + side preview panel ──────────
+interface AttachMeta { id: string; name: string; contentType: string; size: number }
+
+function fmtSize(bytes: number): string {
+  if (bytes > 1_000_000) return `${(bytes / 1_000_000).toFixed(1)} MB`;
+  if (bytes > 1_000) return `${Math.round(bytes / 1_000)} KB`;
+  return `${bytes} B`;
+}
+
+function AttachmentsBar({ commId, onPreview }: { commId: string; onPreview: (commId: string, att: AttachMeta) => void }) {
+  const [atts, setAtts] = useState<AttachMeta[] | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_URL}/api/comms/${encodeURIComponent(commId)}/attachments`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((list: AttachMeta[]) => { if (!cancelled) setAtts(Array.isArray(list) ? list : []); })
+      .catch(() => { if (!cancelled) setAtts([]); });
+    return () => { cancelled = true; };
+  }, [commId]);
+
+  if (!atts || atts.length === 0) return null;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, margin: '8px 0' }}>
+      {atts.map((a) => (
+        <button key={a.id} onClick={(e) => { e.stopPropagation(); onPreview(commId, a); }}
+          title={`Preview ${a.name}`}
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, padding: '4px 10px',
+            fontSize: 11.5, border: '1px solid var(--line)', borderRadius: 12,
+            background: 'var(--bg)', color: 'var(--ink2)', cursor: 'pointer', fontFamily: 'inherit',
+            maxWidth: 260,
+          }}>
+          <span>📎</span>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.name}</span>
+          <span style={{ fontSize: 9.5, fontFamily: "'JetBrains Mono', monospace", color: 'var(--faint)', flexShrink: 0 }}>{fmtSize(a.size)}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Fixed right-side preview: images and PDFs render inline; other types download.
+function AttachmentPreview({ commId, att, onClose }: { commId: string; att: AttachMeta; onClose: () => void }) {
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+  const [error, setError] = useState('');
+  const url = `${API_URL}/api/comms/${encodeURIComponent(commId)}/attachments/${encodeURIComponent(att.id)}`;
+  const isImage = att.contentType.startsWith('image/');
+  const isPdf = att.contentType === 'application/pdf';
+  const isText = att.contentType.startsWith('text/');
+  const previewable = isImage || isPdf || isText;
+
+  React.useEffect(() => {
+    let objectUrl: string | null = null;
+    setBlobUrl(null); setError('');
+    // Fetch through the auth wrapper, render from a blob URL
+    fetch(url)
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.blob(); })
+      .then((b) => { objectUrl = URL.createObjectURL(b); setBlobUrl(objectUrl); })
+      .catch((e) => setError(e.message));
+    return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [url]);
+
+  function download() {
+    if (!blobUrl) return;
+    const a = document.createElement('a');
+    a.href = blobUrl; a.download = att.name; a.click();
+  }
+
+  return (
+    <div style={{
+      position: 'fixed', top: 0, right: 0, bottom: 0, width: 'min(560px, 45vw)',
+      background: 'var(--card)', borderLeft: '1px solid var(--line)',
+      boxShadow: '-8px 0 24px rgba(0,0,0,0.18)', zIndex: 200,
+      display: 'flex', flexDirection: 'column',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--line2)' }}>
+        <span style={{ fontSize: 13, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }}>
+          📎 {att.name}
+        </span>
+        <button onClick={download} disabled={!blobUrl} style={{ ...smallBtn, opacity: blobUrl ? 1 : 0.5 }}>⬇ Download</button>
+        <button onClick={onClose} style={smallBtn}>✕ Close</button>
+      </div>
+      <div style={{ flex: 1, overflow: 'auto', display: 'flex', alignItems: previewable ? 'flex-start' : 'center', justifyContent: 'center', background: 'var(--bg)', padding: isImage ? 12 : 0 }}>
+        {error && <div style={{ fontSize: 13, color: 'var(--p1)', padding: 20 }}>Could not load attachment: {error}</div>}
+        {!error && !blobUrl && <div style={{ fontSize: 13, color: 'var(--mut)', padding: 20 }}>Loading…</div>}
+        {blobUrl && isImage && <img src={blobUrl} alt={att.name} style={{ maxWidth: '100%', height: 'auto', borderRadius: 6 }} />}
+        {blobUrl && (isPdf || isText) && <iframe title={att.name} src={blobUrl} style={{ width: '100%', height: '100%', border: 'none' }} />}
+        {blobUrl && !previewable && (
+          <div style={{ textAlign: 'center', padding: 24 }}>
+            <div style={{ fontSize: 40, marginBottom: 10 }}>📄</div>
+            <div style={{ fontSize: 13, color: 'var(--ink2)', marginBottom: 4 }}>{att.name}</div>
+            <div style={{ fontSize: 11.5, color: 'var(--mut)', marginBottom: 14 }}>{att.contentType} · {fmtSize(att.size)}</div>
+            <button onClick={download} style={{ padding: '6px 18px', fontSize: 13, fontWeight: 600, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer', fontFamily: 'inherit' }}>
+              ⬇ Download to view
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Cc/Bcc inputs with contact autocomplete; persists via PATCH /api/drafts/:id
 function CcBccRow({ draft }: { draft: Draft }) {
   const contacts = useStore((s) => s.contacts);
@@ -478,6 +581,7 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
   const [syncing, setSyncing] = useState(false);
   const [learning, setLearning] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [attPreview, setAttPreview] = useState<{ commId: string; att: AttachMeta } | null>(null);
 
   // Handoff from other screens (e.g. Waiting On "Draft nudge"): open that email
   // with its fresh draft, reset the source filter so it's visible, and scroll to it.
@@ -821,7 +925,13 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
                   }}>
                     {loadingBody === comm.id ? 'Loading…' : (bodyCache[comm.id] || comm.preview)}
                   </div>
-                ) : (
+                ) : null}
+                {expandedId === comm.id && (
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <AttachmentsBar commId={comm.id} onPreview={(cid, att) => setAttPreview({ commId: cid, att })} />
+                  </div>
+                )}
+                {expandedId !== comm.id && (
                   <div style={{ fontSize: '12px', color: 'var(--mut)', marginTop: '2px' }}>{comm.preview}</div>
                 )}
 
@@ -865,6 +975,9 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
         </>}
       </div>
 
+      {attPreview && (
+        <AttachmentPreview commId={attPreview.commId} att={attPreview.att} onClose={() => setAttPreview(null)} />
+      )}
     </div>
   );
 }

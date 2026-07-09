@@ -776,3 +776,28 @@ export async function syncContacts(): Promise<void> {
   setState({ contacts });
   console.log(`[contacts] directory built: ${contacts.length} people`);
 }
+
+// ── Attachments ───────────────────────────────────────────────────────────────
+
+export interface OutlookAttachmentMeta { id: string; name: string; contentType: string; size: number }
+
+export async function listOutlookAttachments(messageId: string): Promise<OutlookAttachmentMeta[]> {
+  const data = await graphGet(
+    `/me/messages/${encodeURIComponent(messageId)}/attachments?$select=id,name,contentType,size`
+  ) as { value: { id: string; name?: string; contentType?: string; size?: number; '@odata.type'?: string }[] };
+  return (data.value || [])
+    .filter((a) => a['@odata.type'] !== '#microsoft.graph.itemAttachment') // only file attachments are previewable
+    .map((a) => ({ id: a.id, name: a.name || 'attachment', contentType: a.contentType || 'application/octet-stream', size: a.size || 0 }));
+}
+
+export async function getOutlookAttachment(messageId: string, attachmentId: string): Promise<{ data: Buffer; contentType: string; name: string }> {
+  const att = await graphGet(
+    `/me/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`
+  ) as { name?: string; contentType?: string; contentBytes?: string };
+  if (!att.contentBytes) throw new Error('attachment has no inline content');
+  return {
+    data: Buffer.from(att.contentBytes, 'base64'),
+    contentType: att.contentType || 'application/octet-stream',
+    name: att.name || 'attachment',
+  };
+}

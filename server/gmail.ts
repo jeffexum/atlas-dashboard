@@ -23,7 +23,8 @@ async function gmailGet<T>(path: string): Promise<T> {
 interface GmailHeader { name: string; value: string }
 interface GmailPart {
   mimeType?: string;
-  body?: { data?: string };
+  filename?: string;
+  body?: { data?: string; attachmentId?: string; size?: number };
   parts?: GmailPart[];
 }
 interface GmailMessage {
@@ -220,4 +221,36 @@ export async function sendGmail(to: string, subject: string, body: string, extra
     body: JSON.stringify({ raw: b64UrlEncode(raw) }),
   });
   if (!res.ok) throw new Error(`Gmail send returned ${res.status}: ${await res.text()}`);
+}
+
+// ── Attachments ───────────────────────────────────────────────────────────────
+
+export interface AttachmentMeta { id: string; name: string; contentType: string; size: number }
+
+function walkParts(part: GmailPart | undefined, out: AttachmentMeta[]): void {
+  if (!part) return;
+  if (part.filename && part.body?.attachmentId) {
+    out.push({
+      id: part.body.attachmentId,
+      name: part.filename,
+      contentType: part.mimeType || 'application/octet-stream',
+      size: part.body.size || 0,
+    });
+  }
+  for (const p of part.parts || []) walkParts(p, out);
+}
+
+export async function listGmailAttachments(commId: string): Promise<AttachmentMeta[]> {
+  const id = commId.replace(/^gm-/, '');
+  const msg = await gmailGet<GmailMessage>(`/messages/${id}?format=full`);
+  const out: AttachmentMeta[] = [];
+  walkParts(msg.payload, out);
+  return out;
+}
+
+export async function getGmailAttachment(commId: string, attachmentId: string): Promise<{ data: Buffer }> {
+  const id = commId.replace(/^gm-/, '');
+  const att = await gmailGet<{ data?: string }>(`/messages/${id}/attachments/${encodeURIComponent(attachmentId)}`);
+  if (!att.data) throw new Error('attachment has no data');
+  return { data: Buffer.from(att.data.replace(/-/g, '+').replace(/_/g, '/'), 'base64') };
 }

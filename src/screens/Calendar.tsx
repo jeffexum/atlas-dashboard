@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
 
 const cardBase: React.CSSProperties = {
@@ -97,8 +97,18 @@ export default function Calendar() {
   const [newTodoTitle, setNewTodoTitle] = useState('');
   const [newTodoPriority, setNewTodoPriority] = useState<'p1' | 'p2' | 'p3'>('p3');
 
-  // Now line — real current time
-  const nowTop = (_now.getHours() + _now.getMinutes() / 60 - START_HOUR) * HOUR_HEIGHT;
+  // Now line — ticks every 30s so the bar stays accurate without a refresh.
+  const [now, setNow] = useState(() => new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  const nowHourFloat = now.getHours() + now.getMinutes() / 60;
+  const nowTop = (nowHourFloat - START_HOUR) * HOUR_HEIGHT;
+  // Only show the bar when today is the selected day and the time is in-range.
+  const viewingToday = viewYear === _curYear && viewMonth === _curMonth && selectedDay === now.getDate();
+  const nowInRange = nowHourFloat >= START_HOUR && nowHourFloat <= END_HOUR;
+  const showNowLine = viewingToday && nowInRange;
 
   // Build calendar grid
   const calendarDays: (number | null)[] = [];
@@ -536,8 +546,8 @@ export default function Calendar() {
             );
           })}
 
-          {/* Now line */}
-          <div
+          {/* Now line — only on today, ticks live */}
+          {showNowLine && <div
             style={{
               position: 'absolute',
               left: 52,
@@ -559,7 +569,7 @@ export default function Calendar() {
                 background: 'oklch(0.58 0.2 27)',
               }}
             />
-          </div>
+          </div>}
 
           {/* Add event floating form */}
           {addEventOpen && (

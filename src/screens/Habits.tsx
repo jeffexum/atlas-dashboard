@@ -45,8 +45,11 @@ const dayStr = (d: Date) => d.toLocaleDateString('en-CA'); // YYYY-MM-DD, browse
 function statsFromHistory(history: string[] | undefined) {
   const done = new Set(history || []);
   const data: boolean[] = [];
+  const dates: string[] = [];
   for (let i = 69; i >= 0; i--) {
-    data.push(done.has(dayStr(new Date(Date.now() - i * DAY_MS))));
+    const ds = dayStr(new Date(Date.now() - i * DAY_MS));
+    dates.push(ds);
+    data.push(done.has(ds));
   }
   const sorted = [...done].sort();
   let longest = 0, cur = 0;
@@ -59,7 +62,7 @@ function statsFromHistory(history: string[] | undefined) {
   }
   const last30 = data.slice(-30);
   const monthPct = Math.round((last30.filter(Boolean).length / 30) * 100);
-  return { data, longest, monthPct, total: done.size };
+  return { data, dates, longest, monthPct, total: done.size };
 }
 
 const CADENCES = ['Daily', 'Weekdays', '3x per week', 'Weekly'];
@@ -67,6 +70,7 @@ const CADENCES = ['Daily', 'Weekdays', '3x per week', 'Weekly'];
 export default function Habits({ setScreen: _setScreen }: Props) {
   const habits = useStore((s) => s.habits);
   const toggleHabitToday = useStore((s) => s.toggleHabitToday);
+  const toggleHabitDate = useStore((s) => s.toggleHabitDate);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Add-habit form
@@ -171,7 +175,7 @@ export default function Habits({ setScreen: _setScreen }: Props) {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {habits.map((habit) => {
           const isExpanded = expandedId === habit.id;
-          const { data, longest, monthPct, total } = statsFromHistory(habit.history);
+          const { data, dates, longest, monthPct, total } = statsFromHistory(habit.history);
 
           return (
             <div key={habit.id} style={{ ...cardBase }}>
@@ -291,26 +295,35 @@ export default function Habits({ setScreen: _setScreen }: Props) {
                 >
                   {/* 10-week heatmap: 70 real days, oldest → today */}
                   <div style={{ marginBottom: 12 }}>
-                    <div style={{ fontSize: 10, color: 'var(--faint)', fontFamily: 'JetBrains Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Last 10 weeks (ends today)</div>
+                    <div style={{ fontSize: 10, color: 'var(--faint)', fontFamily: 'JetBrains Mono, monospace', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 6 }}>Last 10 weeks — tap any day to log or unlog it</div>
                     <div
                       style={{
                         display: 'grid',
-                        gridTemplateColumns: 'repeat(14, 12px)',
-                        gridTemplateRows: 'repeat(5, 12px)',
+                        gridTemplateColumns: 'repeat(14, 14px)',
+                        gridTemplateRows: 'repeat(5, 14px)',
                         gap: 3,
                       }}
                     >
-                      {data.map((filled, i) => (
-                        <div
-                          key={i}
-                          style={{
-                            width: 12,
-                            height: 12,
-                            borderRadius: 2,
-                            background: filled ? 'var(--accent)' : 'var(--line2)',
-                          }}
-                        />
-                      ))}
+                      {data.map((filled, i) => {
+                        const ds = dates[i];
+                        const label = new Date(ds + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+                        return (
+                          <button
+                            key={i}
+                            title={`${label} — ${filled ? 'logged (tap to undo)' : 'not logged (tap to log)'}`}
+                            onClick={() => toggleHabitDate(habit.id, ds)}
+                            style={{
+                              width: 14,
+                              height: 14,
+                              borderRadius: 2,
+                              border: 'none',
+                              padding: 0,
+                              cursor: 'pointer',
+                              background: filled ? 'var(--accent)' : 'var(--line2)',
+                            }}
+                          />
+                        );
+                      })}
                     </div>
                   </div>
 

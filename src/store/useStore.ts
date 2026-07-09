@@ -249,6 +249,7 @@ interface StoreState {
   deleteTask: (id: string) => void;
 
   toggleHabitToday: (id: string) => void;
+  toggleHabitDate: (id: string, date: string) => void;
   updateGoalProgress: (id: string, pct: number) => void;
   addGoal: (name: string, target: string, deadline: string, color: string) => void;
   editGoal: (id: string, updates: Partial<Goal>) => void;
@@ -512,6 +513,22 @@ export const useStore = create<StoreState>((set) => ({
     }));
     const API = import.meta.env.VITE_API_URL || '';
     fetch(`${API}/api/habits/${id}/toggle`, { method: 'POST' }).catch(() => {});
+  },
+
+  toggleHabitDate: (id, date) => {
+    // Server recomputes streak/rate/heatmap and broadcasts the updated habit;
+    // optimistic history flip keeps the cell responsive in the meantime.
+    set((state) => ({
+      habits: state.habits.map((h) => {
+        if (h.id !== id) return h;
+        const hist = new Set(h.history || []);
+        if (hist.has(date)) hist.delete(date); else hist.add(date);
+        return { ...h, history: [...hist] };
+      }),
+    }));
+    fetch(`${API_URL}/api/habits/${id}/toggle-date`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ date }),
+    }).then((r) => { if (!r.ok) notifyError('Could not update that day'); }).catch(() => notifyError('Could not update that day'));
   },
 
   addGoal: (name, target, deadline, color) => {

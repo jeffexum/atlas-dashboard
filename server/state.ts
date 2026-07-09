@@ -786,16 +786,23 @@ export function deleteHabit(id: string): void {
 }
 
 export function toggleHabitToday(id: string): void {
-  const today = denverDay();
+  toggleHabitDate(id, denverDay());
+}
+
+// Toggle any past day — lets the user backfill a day they forgot to log.
+// Future dates are rejected.
+export function toggleHabitDate(id: string, date: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > denverDay()) return false;
   setState({
     habits: _state.habits.map((h) => {
       if (h.id !== id) return h;
       const history = new Set(h.history || []);
-      if (history.has(today)) history.delete(today);
-      else history.add(today);
+      if (history.has(date)) history.delete(date);
+      else history.add(date);
       return recomputeHabit({ ...h, history: [...history] });
     }),
   });
+  return true;
 }
 
 export function updateGoalProgress(id: string, pct: number): void {

@@ -5,7 +5,7 @@ import { trackModelCall, audit } from './audit.js';
 import { USER } from './config.js';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
-import { getState, setState, persistNow, addHabit, deleteHabit, toggleHabitToday, recomputeAllHabits, dismissComm, snoozeComm, addShoppingItem, toggleShoppingItem, deleteShoppingItem, clearBoughtShoppingItems } from './state.js';
+import { getState, setState, persistNow, addHabit, deleteHabit, toggleHabitToday, toggleHabitDate, recomputeAllHabits, dismissComm, snoozeComm, addShoppingItem, toggleShoppingItem, deleteShoppingItem, clearBoughtShoppingItems } from './state.js';
 import type { Comm } from './state.js';
 import { adlerProactiveCheck, generateBriefing, runPartnerAdler, runAdler } from './adler.js';
 import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, replyToEmail, fetchEmailBody, hasCalendarWrite, syncContacts } from './outlook.js';
@@ -197,6 +197,17 @@ app.post('/api/habits', async (req: Request, res: Response) => {
 
 app.post('/api/habits/:id/toggle', async (req: Request, res: Response) => {
   toggleHabitToday(req.params.id as string);
+  await persistNow();
+  res.json({ ok: true });
+});
+
+// Toggle a specific past day (YYYY-MM-DD, user timezone) — backfill editor.
+app.post('/api/habits/:id/toggle-date', async (req: Request, res: Response) => {
+  const { date } = req.body as { date?: string };
+  if (!date || !toggleHabitDate(req.params.id as string, date)) {
+    res.status(400).json({ error: 'date must be YYYY-MM-DD and not in the future' });
+    return;
+  }
   await persistNow();
   res.json({ ok: true });
 });

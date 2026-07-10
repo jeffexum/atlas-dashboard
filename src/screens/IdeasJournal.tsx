@@ -99,30 +99,57 @@ function MicButton({ onText }: { onText: (text: string) => void }) {
 }
 
 // ── Shared: search + tag filter bar ──────────────────────────────────────────
+function tagChipStyle(active: boolean): React.CSSProperties {
+  return {
+    padding: '3px 10px', fontSize: 11, fontFamily: "'JetBrains Mono', monospace",
+    border: `1px solid ${active ? 'var(--accent)' : 'var(--line2)'}`,
+    borderRadius: 10,
+    background: active ? 'var(--accentbg)' : 'transparent',
+    color: active ? 'var(--accent)' : 'var(--faint)', cursor: 'pointer',
+  };
+}
+
+// Two-level tag filter: parents ("work") on the first row; picking one reveals
+// its sub-tags ("work:meeting" shown as "› meeting"). Parent selection includes
+// everything underneath it.
 function FilterBar({ search, setSearch, tags, activeTag, setActiveTag }: {
   search: string; setSearch: (s: string) => void;
   tags: string[]; activeTag: string | null; setActiveTag: (t: string | null) => void;
 }) {
+  const parents = [...new Set(tags.map((t) => t.split(':')[0]))].sort();
+  const activeParent = activeTag ? activeTag.split(':')[0] : null;
+  const children = activeParent
+    ? [...new Set(tags.filter((t) => t.startsWith(activeParent + ':')))].sort()
+    : [];
+
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-      <input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search…"
-        style={{ ...inputStyle, width: 220 }}
-      />
-      {tags.map((tag) => (
-        <button key={tag} onClick={() => setActiveTag(activeTag === tag ? null : tag)}
-          style={{
-            padding: '3px 10px', fontSize: 11, fontFamily: "'JetBrains Mono', monospace",
-            border: `1px solid ${activeTag === tag ? 'var(--accent)' : 'var(--line2)'}`,
-            borderRadius: 10,
-            background: activeTag === tag ? 'var(--accentbg)' : 'transparent',
-            color: activeTag === tag ? 'var(--accent)' : 'var(--faint)', cursor: 'pointer',
-          }}>
-          #{tag}
-        </button>
-      ))}
+    <div style={{ marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search…"
+          style={{ ...inputStyle, width: 220 }}
+        />
+        {parents.map((p) => (
+          <button key={p} onClick={() => setActiveTag(activeParent === p ? null : p)}
+            style={tagChipStyle(activeParent === p)}>
+            #{p}
+          </button>
+        ))}
+      </div>
+      {children.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginTop: 6, paddingLeft: 4 }}>
+          <span style={{ fontSize: 10, color: 'var(--faint)', fontFamily: "'JetBrains Mono', monospace" }}>#{activeParent} ›</span>
+          <button onClick={() => setActiveTag(activeParent)} style={tagChipStyle(activeTag === activeParent)}>all</button>
+          {children.map((c) => (
+            <button key={c} onClick={() => setActiveTag(activeTag === c ? activeParent : c)}
+              style={tagChipStyle(activeTag === c)}>
+              {c.split(':').slice(1).join(':')}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -130,13 +157,20 @@ function FilterBar({ search, setSearch, tags, activeTag, setActiveTag }: {
 function TagsInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <input value={value} onChange={(e) => onChange(e.target.value)}
-      placeholder="tags, comma separated" style={{ ...inputStyle, fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace" }} />
+      placeholder="tags: work, personal, work:meeting…" style={{ ...inputStyle, fontSize: 11.5, fontFamily: "'JetBrains Mono', monospace" }} />
   );
 }
 const parseTags = (s: string) => s.split(',').map((t) => t.trim().toLowerCase().replace(/^#/, '')).filter(Boolean).slice(0, 8);
 
 function matches(search: string, activeTag: string | null, title: string, body: string, tags: string[]): boolean {
-  if (activeTag && !tags.includes(activeTag)) return false;
+  if (activeTag) {
+    // Parent tag ("work") matches itself and all children ("work:meeting");
+    // a child tag must match exactly.
+    const hit = activeTag.includes(':')
+      ? tags.includes(activeTag)
+      : tags.some((t) => t === activeTag || t.startsWith(activeTag + ':'));
+    if (!hit) return false;
+  }
   const q = search.trim().toLowerCase();
   if (!q) return true;
   return `${title} ${body} ${tags.join(' ')}`.toLowerCase().includes(q);
@@ -230,7 +264,7 @@ function NotesTab() {
                 <div style={{ fontSize: 12.5, color: 'var(--ink2)', lineHeight: 1.55, whiteSpace: 'pre-wrap', margin: '6px 0 8px' }}>{n.body}</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                   {n.tags.map((t) => (
-                    <span key={t} style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: 'var(--faint)', background: 'var(--bg)', border: '1px solid var(--line2)', borderRadius: 2, padding: '1px 6px' }}>#{t}</span>
+                    <span key={t} style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: 'var(--faint)', background: 'var(--bg)', border: '1px solid var(--line2)', borderRadius: 2, padding: '1px 6px' }}>#{t.replace(':', ' › ')}</span>
                   ))}
                   <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--faint)' }}>
                     {new Date(n.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
@@ -334,7 +368,7 @@ function IdeasTab() {
                 <div style={{ fontSize: 12.5, color: 'var(--mut)', lineHeight: 1.5, marginBottom: 8, whiteSpace: 'pre-wrap' }}>{idea.body}</div>
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, alignItems: 'center' }}>
                   {idea.tags.map((tag) => (
-                    <span key={tag} style={{ fontSize: 10.5, fontFamily: "'JetBrains Mono', monospace", color: 'var(--faint)', background: 'var(--bg)', border: '1px solid var(--line2)', borderRadius: 2, padding: '1px 6px' }}>#{tag}</span>
+                    <span key={tag} style={{ fontSize: 10.5, fontFamily: "'JetBrains Mono', monospace", color: 'var(--faint)', background: 'var(--bg)', border: '1px solid var(--line2)', borderRadius: 2, padding: '1px 6px' }}>#{tag.replace(':', ' › ')}</span>
                   ))}
                   <span style={{ marginLeft: 'auto' }} />
                   <button onClick={() => startEdit(idea)} style={{ ...btnGhost, padding: '1px 7px', fontSize: 10.5 }}>Edit</button>

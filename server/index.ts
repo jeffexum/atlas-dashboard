@@ -8,10 +8,10 @@ import cors from 'cors';
 import { getState, setState, persistNow, addHabit, deleteHabit, toggleHabitToday, toggleHabitDate, recomputeAllHabits, dismissComm, snoozeComm, addShoppingItem, toggleShoppingItem, deleteShoppingItem, clearBoughtShoppingItems } from './state.js';
 import type { Comm } from './state.js';
 import { adlerProactiveCheck, generateBriefing, runPartnerAdler, runAdler } from './adler.js';
-import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, replyToEmail, fetchEmailBody, hasCalendarWrite, syncContacts, listOutlookAttachments, getOutlookAttachment } from './outlook.js';
+import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, replyToEmail, fetchEmailBody, hasCalendarWrite, syncContacts, listOutlookAttachments, getOutlookAttachment, getOutlookThread } from './outlook.js';
 import { getGoogleAuthUrl, exchangeGoogleCode, syncGoogleCalendar, isGoogleAuthenticated, loadGoogleToken, hasCalendarWriteScope } from './google.js';
 import { syncOura, isOuraConfigured } from './oura.js';
-import { isGmailConnected, syncGmail, replyGmail, fetchGmailBody, listGmailAttachments, getGmailAttachment } from './gmail.js';
+import { isGmailConnected, syncGmail, replyGmail, fetchGmailBody, listGmailAttachments, getGmailAttachment, getGmailThread } from './gmail.js';
 import { suggestSlots, guessTimezone } from './schedule.js';
 import { syncGoodreads, isGoodreadsConfigured } from './goodreads.js';
 import { ensureGraphSubscription, onMailNotification, GRAPH_CLIENT_STATE } from './webhooks.js';
@@ -555,6 +555,18 @@ app.post('/api/shopping/clear-bought', async (_req: Request, res: Response) => {
   clearBoughtShoppingItems();
   await persistNow();
   res.json({ ok: true });
+});
+
+// ── Conversation thread: all messages in an email's thread ───────────────────
+
+app.get('/api/comms/:id/thread', async (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  try {
+    const msgs = id.startsWith('gm-') ? await getGmailThread(id) : await getOutlookThread(id);
+    res.json(msgs);
+  } catch (err) {
+    res.status(500).json({ error: (err as Error).message });
+  }
 });
 
 // ── Email attachments (list + inline preview bytes) ──────────────────────────

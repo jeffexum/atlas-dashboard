@@ -801,3 +801,31 @@ export async function getOutlookAttachment(messageId: string, attachmentId: stri
     name: att.name || 'attachment',
   };
 }
+
+// ── Conversation thread ───────────────────────────────────────────────────────
+
+export interface ThreadMessage { id: string; who: string; email: string; receivedAt: number; body: string }
+
+export async function getOutlookThread(messageId: string): Promise<ThreadMessage[]> {
+  const msg = await graphGet(
+    `/me/messages/${encodeURIComponent(messageId)}?$select=conversationId`
+  ) as { conversationId?: string };
+  if (!msg.conversationId) return [];
+  // Graph rejects $orderby combined with this filter — sort client-side.
+  const data = await graphGet(
+    `/me/messages?$filter=conversationId eq '${msg.conversationId.replace(/'/g, "''")}'&$top=25&$select=id,from,receivedDateTime,body,bodyPreview`
+  ) as { value: { id: string; from?: { emailAddress?: { name?: string; address?: string } }; receivedDateTime?: string; body?: { content?: string; contentType?: string }; bodyPreview?: string }[] };
+  return (data.value || [])
+    .map((m) => {
+      const raw = m.body?.content || '';
+      const body = m.body?.contentType === 'html' ? stripHtml(raw) : raw.trim();
+      return {
+        id: m.id,
+        who: m.from?.emailAddress?.name || m.from?.emailAddress?.address || 'Unknown',
+        email: m.from?.emailAddress?.address || '',
+        receivedAt: m.receivedDateTime ? new Date(m.receivedDateTime).getTime() : 0,
+        body: (body || m.bodyPreview || '').slice(0, 3000),
+      };
+    })
+    .sort((a, b) => a.receivedAt - b.receivedAt);
+}

@@ -26,6 +26,18 @@ const priorityColor = (p: string) => {
   return 'var(--p3)';
 };
 
+// Render email times from the real timestamp at render time — the server's
+// relative strings ("34m ago") were frozen at sync time and went stale.
+function fmtCommTime(c: { receivedAt?: number; time: string }): string {
+  if (!c.receivedAt) return c.time;
+  const d = new Date(c.receivedAt);
+  const ageMs = Date.now() - c.receivedAt;
+  if (ageMs < 60 * 60_000) return `${Math.max(1, Math.round(ageMs / 60_000))}m ago`;
+  const today = new Date().toDateString() === d.toDateString();
+  if (today) return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 const smallBtn: React.CSSProperties = {
   padding: '3px 8px',
   fontSize: '11.5px',
@@ -204,6 +216,67 @@ function SchedulerPane({ commId, myTz, onInsert }: { commId: string; myTz?: stri
           </div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ── Thread view: all messages in the conversation, reply to any one ──────────
+interface ThreadMsg { id: string; who: string; email: string; receivedAt: number; body: string }
+
+function ThreadView({ commId, onReplyTo }: { commId: string; onReplyTo: (messageId: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [msgs, setMsgs] = useState<ThreadMsg[] | null>(null);
+  const [openMsg, setOpenMsg] = useState<string | null>(null);
+  const [error, setError] = useState('');
+
+  function toggle() {
+    if (open) { setOpen(false); return; }
+    setOpen(true);
+    if (msgs) return;
+    fetch(`${API_URL}/api/comms/${encodeURIComponent(commId)}/thread`)
+      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then((list: ThreadMsg[]) => setMsgs(Array.isArray(list) ? list : []))
+      .catch((e) => setError(e.message));
+  }
+
+  const fmt = (ts: number) => new Date(ts).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
+    new Date(ts).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+
+  return (
+    <div style={{ margin: '6px 0' }}>
+      <button onClick={(e) => { e.stopPropagation(); toggle(); }}
+        style={{ ...smallBtn, borderRadius: 12 }}>
+        🧵 {open ? 'Hide thread' : `View thread${msgs ? ` (${msgs.length})` : ''}`}
+      </button>
+      {open && (
+        <div style={{ marginTop: 8, borderLeft: '2px solid var(--line)', paddingLeft: 10 }} onClick={(e) => e.stopPropagation()}>
+          {error && <div style={{ fontSize: 12, color: 'var(--p1)' }}>Could not load thread: {error}</div>}
+          {!error && !msgs && <div style={{ fontSize: 12, color: 'var(--mut)' }}>Loading thread…</div>}
+          {msgs && msgs.length === 0 && <div style={{ fontSize: 12, color: 'var(--mut)' }}>No other messages in this thread.</div>}
+          {msgs && msgs.map((m) => (
+            <div key={m.id} style={{ marginBottom: 6 }}>
+              <div onClick={() => setOpenMsg(openMsg === m.id ? null : m.id)}
+                style={{ display: 'flex', alignItems: 'baseline', gap: 8, cursor: 'pointer', padding: '3px 6px', borderRadius: 4, background: openMsg === m.id ? 'var(--accentbg)' : 'transparent' }}>
+                <span style={{ fontSize: 12, fontWeight: m.id === commId ? 700 : 500, color: 'var(--ink)' }}>{m.who}</span>
+                <span style={{ fontSize: 10.5, fontFamily: "'JetBrains Mono', monospace", color: 'var(--faint)' }}>{fmt(m.receivedAt)}</span>
+                {m.id === commId && <span style={{ fontSize: 9.5, color: 'var(--accent)' }}>· this message</span>}
+                <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--faint)' }}>{openMsg === m.id ? '▾' : '▸'}</span>
+              </div>
+              {openMsg === m.id && (
+                <div style={{ padding: '6px 8px' }}>
+                  <div style={{ fontSize: 12, color: 'var(--ink2)', whiteSpace: 'pre-wrap', lineHeight: 1.6, maxHeight: 260, overflowY: 'auto', background: 'var(--bg)', borderRadius: 5, padding: '8px 10px' }}>
+                    {m.body || '(no text)'}
+                  </div>
+                  <button onClick={() => onReplyTo(m.id)}
+                    style={{ ...smallBtn, marginTop: 6, borderColor: 'var(--accent)', color: 'var(--accent)' }}>
+                    ↩ Reply to this message
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -599,6 +672,8 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
   const [learning, setLearning] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [attPreview, setAttPreview] = useState<{ commId: string; att: AttachMeta } | null>(null);
+  // card comm id → thread message id the user chose to reply to (composer follows it)
+  const [threadReplyFor, setThreadReplyFor] = useState<Record<string, string>>({});
 
   // Handoff from other screens (e.g. Waiting On "Draft nudge"): open that email
   // with its fresh draft, reset the source filter so it's visible, and scroll to it.
@@ -924,7 +999,7 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
                     {comm.source}
                   </span>
                   <span style={{ fontSize: '14px', fontWeight: 600, color: 'var(--ink)', flex: 1 }}>{comm.who}</span>
-                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: 'var(--faint)' }}>{comm.time}</span>
+                  <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '11px', color: 'var(--faint)' }}>{fmtCommTime(comm)}</span>
                   <span style={{ fontSize: '11px', color: 'var(--faint)' }}>{expandedId === comm.id ? '▲' : '▼'}</span>
                 </div>
 
@@ -957,6 +1032,10 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
                 {expandedId === comm.id && (
                   <div onClick={(e) => e.stopPropagation()}>
                     <AttachmentsBar commId={comm.id} onPreview={(cid, att) => setAttPreview({ commId: cid, att })} />
+                    <ThreadView commId={comm.id} onReplyTo={(msgId) => {
+                      setThreadReplyFor((m) => ({ ...m, [comm.id]: msgId }));
+                      handleDraftReply(msgId);
+                    }} />
                   </div>
                 )}
                 {expandedId !== comm.id && (
@@ -989,7 +1068,8 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
 
                 {/* Inline draft composer (when a ready draft exists for this email) */}
                 {expandedId === comm.id && (() => {
-                  const inlineDraft = drafts.find((d) => d.commId === comm.id && d.status === 'ready');
+                  const inlineDraft = drafts.find((d) =>
+                    (d.commId === comm.id || (threadReplyFor[comm.id] && d.commId === threadReplyFor[comm.id])) && d.status === 'ready');
                   return inlineDraft ? (
                     <div onClick={(e) => e.stopPropagation()}>
                       <DraftComposer draft={inlineDraft} who={comm.who} commId={comm.id} />

@@ -254,3 +254,21 @@ export async function getGmailAttachment(commId: string, attachmentId: string): 
   if (!att.data) throw new Error('attachment has no data');
   return { data: Buffer.from(att.data.replace(/-/g, '+').replace(/_/g, '/'), 'base64') };
 }
+
+// ── Conversation thread ───────────────────────────────────────────────────────
+
+export async function getGmailThread(commId: string): Promise<Array<{ id: string; who: string; email: string; receivedAt: number; body: string }>> {
+  const id = commId.replace(/^gm-/, '');
+  const msg = await gmailGet<GmailMessage>(`/messages/${id}?format=minimal`);
+  const thread = await gmailGet<{ messages?: GmailMessage[] }>(`/threads/${msg.threadId}?format=full`);
+  return (thread.messages || []).map((m) => {
+    const from = parseFrom(header(m, 'From'));
+    return {
+      id: `gm-${m.id}`,
+      who: from.name,
+      email: from.email,
+      receivedAt: m.internalDate ? parseInt(m.internalDate, 10) : 0,
+      body: (extractBody(m.payload) || m.snippet || '').slice(0, 3000),
+    };
+  }).sort((a, b) => a.receivedAt - b.receivedAt);
+}

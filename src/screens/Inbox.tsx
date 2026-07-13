@@ -89,7 +89,7 @@ function SchedulerPane({ commId, myTz, onInsert }: { commId: string; myTz?: stri
 
   if (!data) {
     return (
-      <div style={{ width: 250, flexShrink: 0, borderLeft: '1px solid var(--line2)', padding: 14, fontSize: 12, color: 'var(--mut)' }}>
+      <div style={{ width: 340, flexShrink: 0, borderLeft: '1px solid var(--line2)', padding: 14, fontSize: 12, color: 'var(--mut)' }}>
         Loading calendar…
       </div>
     );
@@ -115,7 +115,7 @@ function SchedulerPane({ commId, myTz, onInsert }: { commId: string; myTz?: stri
   const anchor8am = firstSlot ? firstSlot.epoch - (firstSlot.startHour - 8) * 3600_000 : todayBase;
 
   return (
-    <div style={{ width: 250, flexShrink: 0, borderLeft: '1px solid var(--line2)', padding: '10px 12px', background: 'var(--bg)', maxHeight: 480, overflowY: 'auto' }}>
+    <div style={{ width: 340, flexShrink: 0, borderLeft: '1px solid var(--line2)', padding: '10px 12px', background: 'var(--bg)', maxHeight: 560, overflowY: 'auto' }}>
       <div style={{ ...eyebrow, marginBottom: 8 }}>📅 Find a time</div>
 
       {/* Duration + their-TZ controls */}
@@ -179,6 +179,19 @@ function SchedulerPane({ commId, myTz, onInsert }: { commId: string; myTz?: stri
             {day.label}
             <span style={{ color: 'var(--faint)', fontWeight: 400 }}> · {day.busy.length ? `${day.busy.length} booked` : 'clear'}</span>
           </div>
+          {day.busy.length > 0 && (
+            <div style={{ marginBottom: 5 }}>
+              {day.busy.map((b, i) => {
+                const f = (h: number) => { const hr = Math.floor(h); const m = Math.round((h % 1) * 60); const ap = hr >= 12 ? 'p' : 'a'; const h12 = hr % 12 === 0 ? 12 : hr % 12; return `${h12}${m ? ':' + String(m).padStart(2, '0') : ''}${ap}`; };
+                return (
+                  <div key={i} style={{ display: 'flex', gap: 6, alignItems: 'baseline', fontSize: 10.5, lineHeight: 1.7, color: 'var(--mut)' }}>
+                    <span style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--faint)', minWidth: 74, flexShrink: 0 }}>{f(b.start)}–{f(b.end)}</span>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.title}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
             {day.slots.slice(0, 8).map((s) => (
               <button key={s.epoch}
@@ -551,6 +564,7 @@ type MailSource = 'all' | 'work' | 'personal';
 export default function Inbox({ setScreen: _setScreen }: Props) {
   const [source, setSource] = useState<MailSource>('all');
   const [prioFilter, setPrioFilter] = useState<'all' | 'p1' | 'p2'>('all');
+  const [inboxSearch, setInboxSearch] = useState('');
   const [tab, setTab] = useState<'messages' | 'drafts'>('messages');
   // Newest first — receivedAt is a real timestamp; items without one sink to the bottom
   const allComms = useStore((s) => s.comms)
@@ -570,9 +584,12 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
   const sourceFiltered = source === 'all' ? allComms
     : source === 'personal' ? allComms.filter((c) => isPersonal(c.id))
     : allComms.filter((c) => !isPersonal(c.id));
-  const comms = prioFilter === 'all' ? sourceFiltered
+  const prioFiltered = prioFilter === 'all' ? sourceFiltered
     : prioFilter === 'p1' ? sourceFiltered.filter((c) => c.priority === 'p1')
     : sourceFiltered.filter((c) => c.priority !== 'p1');
+  const q = inboxSearch.trim().toLowerCase();
+  const comms = !q ? prioFiltered
+    : prioFiltered.filter((c) => `${c.who} ${c.subject} ${c.preview}`.toLowerCase().includes(q));
   const dismissComm = useStore((s) => s.dismissComm);
   const drafts = useStore((s) => s.drafts);
   const snoozeComm = useStore((s) => s.snoozeComm);
@@ -673,7 +690,7 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
         fontFamily: "'Schibsted Grotesk', sans-serif",
         color: 'var(--ink)',
         display: 'block',
-        maxWidth: 860,
+        maxWidth: 1040,
       }}
     >
       {/* Left column */}
@@ -854,6 +871,17 @@ export default function Inbox({ setScreen: _setScreen }: Props) {
             </button>
           ))}
         </div>
+        <input
+          value={inboxSearch}
+          onChange={(e) => setInboxSearch(e.target.value)}
+          placeholder="🔍 Search sender, subject…"
+          style={{
+            marginLeft: 8, marginBottom: 14, padding: '6px 12px', width: 230,
+            border: '1px solid var(--line)', borderRadius: 8, fontSize: 12.5,
+            fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--card)', outline: 'none',
+            verticalAlign: 'top',
+          }}
+        />
 
         {/* Messages */}
         <div>

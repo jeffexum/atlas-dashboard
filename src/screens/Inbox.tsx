@@ -235,7 +235,7 @@ function ThreadView({ commId, onReplyTo }: { commId: string; onReplyTo: (message
     if (msgs) return;
     fetch(`${API_URL}/api/comms/${encodeURIComponent(commId)}/thread`)
       .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
-      .then((list: ThreadMsg[]) => setMsgs(Array.isArray(list) ? list : []))
+      .then((list: ThreadMsg[]) => setMsgs(Array.isArray(list) ? list.slice().sort((a, b) => b.receivedAt - a.receivedAt) : []))
       .catch((e) => setError(e.message));
   }
 
@@ -256,11 +256,18 @@ function ThreadView({ commId, onReplyTo }: { commId: string; onReplyTo: (message
           {msgs && msgs.map((m) => (
             <div key={m.id} style={{ marginBottom: 6 }}>
               <div onClick={() => setOpenMsg(openMsg === m.id ? null : m.id)}
-                style={{ display: 'flex', alignItems: 'baseline', gap: 8, cursor: 'pointer', padding: '3px 6px', borderRadius: 4, background: openMsg === m.id ? 'var(--accentbg)' : 'transparent' }}>
-                <span style={{ fontSize: 12, fontWeight: m.id === commId ? 700 : 500, color: 'var(--ink)' }}>{m.who}</span>
-                <span style={{ fontSize: 10.5, fontFamily: "'JetBrains Mono', monospace", color: 'var(--faint)' }}>{fmt(m.receivedAt)}</span>
-                {m.id === commId && <span style={{ fontSize: 9.5, color: 'var(--accent)' }}>· this message</span>}
-                <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--faint)' }}>{openMsg === m.id ? '▾' : '▸'}</span>
+                style={{ cursor: 'pointer', padding: '3px 6px', borderRadius: 4, background: openMsg === m.id ? 'var(--accentbg)' : 'transparent' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: m.id === commId ? 700 : 500, color: 'var(--ink)' }}>{m.who}</span>
+                  <span style={{ fontSize: 10.5, fontFamily: "'JetBrains Mono', monospace", color: 'var(--faint)' }}>{fmt(m.receivedAt)}</span>
+                  {m.id === commId && <span style={{ fontSize: 9.5, color: 'var(--accent)' }}>· this message</span>}
+                  <span style={{ marginLeft: 'auto', fontSize: 10, color: 'var(--faint)' }}>{openMsg === m.id ? '▾' : '▸'}</span>
+                </div>
+                {openMsg !== m.id && (
+                  <div style={{ fontSize: 11, color: 'var(--mut)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginTop: 1 }}>
+                    {m.body.replace(/\s+/g, ' ').slice(0, 140)}
+                  </div>
+                )}
               </div>
               {openMsg === m.id && (
                 <div style={{ padding: '6px 8px' }}>

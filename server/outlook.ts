@@ -812,10 +812,16 @@ export async function getOutlookThread(messageId: string): Promise<ThreadMessage
   ) as { conversationId?: string };
   if (!msg.conversationId) return [];
   // Graph rejects $orderby combined with this filter — sort client-side.
-  const data = await graphGet(
-    `/me/messages?$filter=conversationId eq '${msg.conversationId.replace(/'/g, "''")}'&$top=25&$select=id,from,receivedDateTime,body,bodyPreview`
-  ) as { value: { id: string; from?: { emailAddress?: { name?: string; address?: string } }; receivedDateTime?: string; body?: { content?: string; contentType?: string }; bodyPreview?: string }[] };
-  return (data.value || [])
+  // Page through the whole conversation (long threads exceed one page).
+  type Row = { id: string; from?: { emailAddress?: { name?: string; address?: string } }; receivedDateTime?: string; body?: { content?: string; contentType?: string }; bodyPreview?: string };
+  const rows: Row[] = [];
+  let next: string | null = `/me/messages?$filter=conversationId eq '${msg.conversationId.replace(/'/g, "''")}'&$top=100&$select=id,from,receivedDateTime,body,bodyPreview`;
+  for (let page = 0; next && page < 5; page++) {
+    const data = await graphGet(next.startsWith('https://graph.microsoft.com/v1.0') ? next.slice('https://graph.microsoft.com/v1.0'.length) : next) as { value: Row[]; '@odata.nextLink'?: string };
+    rows.push(...(data.value || []));
+    next = data['@odata.nextLink'] || null;
+  }
+  return rows
     .map((m) => {
       const raw = m.body?.content || '';
       const body = m.body?.contentType === 'html' ? stripHtml(raw) : raw.trim();

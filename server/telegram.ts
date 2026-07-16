@@ -85,6 +85,29 @@ export function createTelegramBot(webhookUrl: string): TelegramBot {
   }
 
   const bot = new TelegramBot(token, { webHook: { port: 0 } });
+
+  // ── Voice note transcription ────────────────────────────────────────────────
+  // Telegram voice messages arrive as OGG/Opus files. Whisper (Groq free tier, or
+  // OpenAI) transcribes them; the transcript then flows through the normal text path.
+  async function transcribeVoice(fileId: string): Promise<string | null> {
+    const groqKey = process.env.GROQ_API_KEY;
+    const openaiKey = process.env.OPENAI_API_KEY;
+    if (!groqKey && !openaiKey) return null;
+    const link = await bot.getFileLink(fileId);
+    const audio = await fetch(link).then((r) => r.arrayBuffer());
+    const form = new FormData();
+    form.append('file', new Blob([audio], { type: 'audio/ogg' }), 'voice.ogg');
+    form.append('model', groqKey ? 'whisper-large-v3-turbo' : 'whisper-1');
+    const res = await fetch(
+      groqKey
+        ? 'https://api.groq.com/openai/v1/audio/transcriptions'
+        : 'https://api.openai.com/v1/audio/transcriptions',
+      { method: 'POST', headers: { Authorization: `Bearer ${groqKey || openaiKey}` }, body: form }
+    );
+    if (!res.ok) throw new Error(`transcription failed: ${res.status} ${await res.text().then((t) => t.slice(0, 200))}`);
+    const json = await res.json() as { text?: string };
+    return json.text?.trim() || '';
+  }
   // Load the user table before any update can be processed. processUpdate is only
   // called by the webhook route, which is registered after this returns, but we
   // still gate handler logic on _usersReady to be safe against early updates.
@@ -93,7 +116,30 @@ export function createTelegramBot(webhookUrl: string): TelegramBot {
   bot.on('message', async (msg) => {
     await _usersReady;
     const chatId = msg.chat.id;
-    const text = msg.text || '';
+    let text = msg.text || '';
+
+    // Voice note → transcribe, then treat exactly like typed text
+    const voice = msg.voice || msg.audio;
+    if (!text && voice && tgUsers[String(chatId)]) {
+      try {
+        await bot.sendChatAction(chatId, 'typing');
+        const transcript = await transcribeVoice(voice.file_id);
+        if (transcript === null) {
+          await bot.sendMessage(chatId, '🎤 I can hear you, but voice transcription isn\'t configured yet — add a free GROQ_API_KEY (console.groq.com) or an OPENAI_API_KEY to the server environment.');
+          return;
+        }
+        if (!transcript) {
+          await bot.sendMessage(chatId, '🎤 I couldn\'t make out any words in that voice note — mind trying again?');
+          return;
+        }
+        text = transcript;
+        await bot.sendMessage(chatId, `🎤 _"${transcript.slice(0, 300)}"_`, { parse_mode: 'Markdown' }).catch(() => {});
+      } catch (err) {
+        console.error('Voice transcription error:', err);
+        await bot.sendMessage(chatId, '🎤 Couldn\'t transcribe that voice note — try again or type it out.');
+        return;
+      }
+    }
 
     const user = tgUsers[String(chatId)];
 

@@ -835,3 +835,14 @@ export async function getOutlookThread(messageId: string): Promise<ThreadMessage
     })
     .sort((a, b) => a.receivedAt - b.receivedAt);
 }
+
+// Update an Outlook event's subject and/or times (wall-clock + IANA tz).
+export async function updateOutlookEvent(eventId: string, opts: {
+  subject?: string; startLocal?: string; endLocal?: string; tz?: string;
+}): Promise<void> {
+  const body: Record<string, unknown> = {};
+  if (opts.subject !== undefined) body.subject = opts.subject;
+  if (opts.startLocal) body.start = { dateTime: opts.startLocal, timeZone: opts.tz };
+  if (opts.endLocal) body.end = { dateTime: opts.endLocal, timeZone: opts.tz };
+  await graphRequest('PATCH', `/me/events/${eventId}`, body);
+}

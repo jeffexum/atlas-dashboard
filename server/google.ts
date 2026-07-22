@@ -309,3 +309,21 @@ export async function syncGoogleCalendar(): Promise<void> {
   setState({ calEvents: [...nonGoogle, ...calEvents] });
   console.log(`[syncGoogleCalendar] ${calEvents.length} events synced`);
 }
+
+// Update a Google event's summary and/or times. Accepts raw or "gcal-" prefixed id.
+export async function updateGoogleEvent(eventId: string, opts: {
+  summary?: string; startLocal?: string; endLocal?: string; tz?: string;
+}): Promise<void> {
+  const id = eventId.startsWith('gcal-') ? eventId.slice(5) : eventId;
+  const body: Record<string, unknown> = {};
+  if (opts.summary !== undefined) body.summary = opts.summary;
+  if (opts.startLocal) body.start = { dateTime: opts.startLocal, timeZone: opts.tz };
+  if (opts.endLocal) body.end = { dateTime: opts.endLocal, timeZone: opts.tz };
+  const token = await getAccessToken();
+  const res = await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`Google update event ${res.status}: ${(await res.text()).slice(0, 200)}`);
+}

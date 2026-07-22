@@ -8,8 +8,8 @@ import cors from 'cors';
 import { getState, setState, persistNow, addHabit, deleteHabit, toggleHabitToday, toggleHabitDate, recomputeAllHabits, dismissComm, snoozeComm, addShoppingItem, toggleShoppingItem, deleteShoppingItem, clearBoughtShoppingItems } from './state.js';
 import type { Comm } from './state.js';
 import { adlerProactiveCheck, generateBriefing, runPartnerAdler, runAdler } from './adler.js';
-import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, replyToEmail, fetchEmailBody, hasCalendarWrite, syncContacts, listOutlookAttachments, getOutlookAttachment, getOutlookThread } from './outlook.js';
-import { getGoogleAuthUrl, exchangeGoogleCode, syncGoogleCalendar, isGoogleAuthenticated, loadGoogleToken, hasCalendarWriteScope } from './google.js';
+import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, replyToEmail, fetchEmailBody, hasCalendarWrite, syncContacts, listOutlookAttachments, getOutlookAttachment, getOutlookThread, updateOutlookEvent, deleteOutlookEvent } from './outlook.js';
+import { getGoogleAuthUrl, exchangeGoogleCode, syncGoogleCalendar, isGoogleAuthenticated, loadGoogleToken, hasCalendarWriteScope, updateGoogleEvent, deleteGoogleEvent } from './google.js';
 import { syncOura, isOuraConfigured } from './oura.js';
 import { isGmailConnected, syncGmail, replyGmail, fetchGmailBody, listGmailAttachments, getGmailAttachment, getGmailThread } from './gmail.js';
 import { suggestSlots, guessTimezone } from './schedule.js';
@@ -555,6 +555,75 @@ app.post('/api/shopping/clear-bought', async (_req: Request, res: Response) => {
   clearBoughtShoppingItems();
   await persistNow();
   res.json({ ok: true });
+});
+
+// ── Calendar event edit/move/delete (writes through to Outlook/Google) ───────
+
+const pad2 = (n: number) => String(n).padStart(2, '0');
+function wallClock(y: number, mo: number, d: number, hourFloat: number): string {
+  const h = Math.floor(hourFloat);
+  const min = Math.round((hourFloat - h) * 60);
+  return `${y}-${pad2(mo)}-${pad2(d)}T${pad2(h)}:${pad2(min)}:00`;
+}
+
+app.put('/api/calendar/events/:id', async (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  const { title, start, duration } = (req.body || {}) as { title?: string; start?: number; duration?: number };
+  const st = getState();
+  const ev = st.calEvents.find((e) => e.id === id);
+  if (!ev) { res.status(404).json({ error: 'event not found' }); return; }
+  if (ev.allDay) { res.status(400).json({ error: 'all-day events cannot be edited here' }); return; }
+
+  const newStart = typeof start === 'number' ? Math.max(0, Math.min(23.75, start)) : ev.start;
+  const newDuration = typeof duration === 'number' ? Math.max(0.25, Math.min(12, duration)) : ev.duration;
+  const newTitle = typeof title === 'string' && title.trim() ? title.trim() : ev.title;
+  const y = ev.year ?? new Date().getFullYear();
+  const mo = ev.month ?? new Date().getMonth() + 1;
+
+  try {
+    if (ev.source === 'work') {
+      await updateOutlookEvent(id, {
+        subject: newTitle !== ev.title ? newTitle : undefined,
+        startLocal: wallClock(y, mo, ev.date, newStart),
+        endLocal: wallClock(y, mo, ev.date, newStart + newDuration),
+        tz: USER.tz,
+      });
+    } else if (ev.source === 'personal') {
+      await updateGoogleEvent(id, {
+        summary: newTitle !== ev.title ? newTitle : undefined,
+        startLocal: wallClock(y, mo, ev.date, newStart),
+        endLocal: wallClock(y, mo, ev.date, newStart + newDuration),
+        tz: USER.tz,
+      });
+    }
+    // manual events (no source) only live in state
+    setState({
+      calEvents: st.calEvents.map((e) =>
+        e.id === id ? { ...e, title: newTitle, start: newStart, duration: newDuration } : e),
+    });
+    await persistNow();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Calendar update error:', err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+app.delete('/api/calendar/events/:id', async (req: Request, res: Response) => {
+  const id = String(req.params.id);
+  const st = getState();
+  const ev = st.calEvents.find((e) => e.id === id);
+  if (!ev) { res.status(404).json({ error: 'event not found' }); return; }
+  try {
+    if (ev.source === 'work') await deleteOutlookEvent(id);
+    else if (ev.source === 'personal') await deleteGoogleEvent(id);
+    setState({ calEvents: st.calEvents.filter((e) => e.id !== id) });
+    await persistNow();
+    res.json({ ok: true });
+  } catch (err) {
+    console.error('Calendar delete error:', err);
+    res.status(500).json({ error: (err as Error).message });
+  }
 });
 
 // ── Conversation thread: all messages in an email's thread ───────────────────

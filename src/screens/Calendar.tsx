@@ -62,6 +62,76 @@ export default function Calendar() {
   const addTask = useStore((s) => s.addTask);
 
   const [selectedDay, setSelectedDay] = useState(_now.getDate());
+  // Edit-in-place + drag-to-move state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const [editStart, setEditStart] = useState('');
+  const [editDuration, setEditDuration] = useState(1);
+  const [evBusy, setEvBusy] = useState(false);
+  // Optimistic position overrides while the server round-trips
+  const [evOverrides, setEvOverrides] = useState<Record<string, { start: number }>>({});
+  const dragRef = React.useRef<{ id: string; startY: number; origStart: number; moved: boolean } | null>(null);
+  const [dragPreview, setDragPreview] = useState<{ id: string; start: number } | null>(null);
+
+  async function saveEvent(id: string, patch: { title?: string; start?: number; duration?: number }) {
+    setEvBusy(true);
+    if (patch.start !== undefined) setEvOverrides((o) => ({ ...o, [id]: { start: patch.start! } }));
+    try {
+      const res = await fetch(`${API_URL}/api/calendar/events/${encodeURIComponent(id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(patch),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+    } catch (err) {
+      alert(`Couldn't update event: ${(err as Error).message}`);
+      setEvOverrides((o) => { const { [id]: _drop, ...rest } = o; return rest; });
+    } finally {
+      setEvBusy(false);
+      setEditingId(null);
+    }
+  }
+
+  async function deleteEvent(id: string) {
+    if (!confirm('Delete this event from your calendar?')) return;
+    setEvBusy(true);
+    try {
+      const res = await fetch(`${API_URL}/api/calendar/events/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+      setSelectedEventId(null);
+    } catch (err) {
+      alert(`Couldn't delete event: ${(err as Error).message}`);
+    } finally {
+      setEvBusy(false);
+    }
+  }
+
+  // Drag-to-move: vertical drag snaps to 15-minute increments
+  React.useEffect(() => {
+    function onMove(e: MouseEvent) {
+      const d = dragRef.current;
+      if (!d) return;
+      const dy = e.clientY - d.startY;
+      if (!d.moved && Math.abs(dy) < 5) return;
+      d.moved = true;
+      const raw = d.origStart + dy / HOUR_HEIGHT;
+      const snapped = Math.max(START_HOUR, Math.min(END_HOUR - 0.25, Math.round(raw * 4) / 4));
+      setDragPreview({ id: d.id, start: snapped });
+    }
+    function onUp() {
+      const d = dragRef.current;
+      dragRef.current = null;
+      setDragPreview((p) => {
+        if (d && d.moved && p && p.id === d.id && p.start !== d.origStart) {
+          saveEvent(d.id, { start: p.start });
+        }
+        return null;
+      });
+    }
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => { window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+  }, []);
   const [syncing, setSyncing] = useState(false);
 
   // Month navigation for the mini calendar
@@ -402,7 +472,9 @@ export default function Calendar() {
 
           {/* Events */}
           {dayEvents.map((ev) => {
-            const top = (ev.start - START_HOUR) * HOUR_HEIGHT;
+            const liveStart = dragPreview?.id === ev.id ? dragPreview.start
+              : evOverrides[ev.id]?.start ?? ev.start;
+            const top = (liveStart - START_HOUR) * HOUR_HEIGHT;
             const height = ev.duration * HOUR_HEIGHT - 4;
             const bg = eventBgMap[ev.color] || 'rgba(80,80,80,0.1)';
             const isSelected = selectedEventId === ev.id;
@@ -414,8 +486,13 @@ export default function Calendar() {
               <React.Fragment key={ev.id}>
                 <div
                   data-event="true"
+                  onMouseDown={(e) => {
+                    if (ev.allDay) return;
+                    dragRef.current = { id: ev.id, startY: e.clientY, origStart: liveStart, moved: false };
+                  }}
                   onClick={(e) => {
                     e.stopPropagation();
+                    if (dragPreview) return; // finishing a drag, not a click
                     setSelectedEventId(isSelected ? null : ev.id);
                   }}
                   style={{
@@ -430,7 +507,10 @@ export default function Calendar() {
                     backgroundColor: isSelected ? (eventBgMap[ev.color] || 'rgba(80,80,80,0.18)').replace('0.12', '0.22') : bg,
                     boxSizing: 'border-box',
                     overflow: 'hidden',
-                    cursor: 'pointer',
+                    cursor: dragPreview?.id === ev.id ? 'grabbing' : 'pointer',
+                    opacity: dragPreview?.id === ev.id ? 0.75 : 1,
+                    zIndex: dragPreview?.id === ev.id ? 30 : undefined,
+                    userSelect: 'none',
                     outline: isSelected ? `2px solid ${ev.color}` : 'none',
                     outlineOffset: 1,
                   }}
@@ -456,7 +536,7 @@ export default function Calendar() {
                       lineHeight: 1.4,
                     }}
                   >
-                    {formatEventTime(ev.start, ev.duration)}
+                    {formatEventTime(liveStart, ev.duration)}
                   </div>
                   {ev.duration >= 0.75 && (
                     <div
@@ -508,9 +588,40 @@ export default function Calendar() {
                     <div style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: 11, color: 'var(--mut)', marginBottom: 2 }}>
                       {formatEventTime(ev.start, ev.duration)} · {ev.duration < 1 ? `${ev.duration * 60}min` : `${ev.duration}h`}
                     </div>
+                    {editingId === ev.id && (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 8 }}>
+                        <input value={editTitle} onChange={(e) => setEditTitle(e.target.value)}
+                          style={{ padding: '5px 8px', fontSize: 12.5, border: '1px solid var(--line)', borderRadius: 4, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--bg)' }} />
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          <input type="time" value={editStart} onChange={(e) => setEditStart(e.target.value)} step={900}
+                            style={{ padding: '4px 6px', fontSize: 12, border: '1px solid var(--line)', borderRadius: 4, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--bg)' }} />
+                          <select value={editDuration} onChange={(e) => setEditDuration(Number(e.target.value))}
+                            style={{ padding: '4px 6px', fontSize: 12, border: '1px solid var(--line)', borderRadius: 4, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--bg)' }}>
+                            {[0.25, 0.5, 0.75, 1, 1.5, 2, 3, 4].map((d) => (
+                              <option key={d} value={d}>{d < 1 ? `${d * 60} min` : `${d} hr`}</option>
+                            ))}
+                          </select>
+                          <button disabled={evBusy}
+                            onClick={() => {
+                              const [h, m] = editStart.split(':').map(Number);
+                              saveEvent(ev.id, { title: editTitle, start: h + (m || 0) / 60, duration: editDuration });
+                            }}
+                            style={{ padding: '4px 12px', fontSize: 12, fontWeight: 600, background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 4, cursor: 'pointer', fontFamily: 'inherit', opacity: evBusy ? 0.6 : 1 }}>
+                            {evBusy ? 'Saving…' : 'Save'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
                       <button
-                        onClick={() => console.log('Edit event', ev.id)}
+                        onClick={() => {
+                          if (editingId === ev.id) { setEditingId(null); return; }
+                          setEditingId(ev.id);
+                          setEditTitle(ev.title);
+                          const h = Math.floor(ev.start); const m = Math.round((ev.start - h) * 60);
+                          setEditStart(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+                          setEditDuration(ev.duration);
+                        }}
                         style={{
                           padding: '3px 10px',
                           fontSize: 11,
@@ -522,10 +633,10 @@ export default function Calendar() {
                           fontFamily: 'inherit',
                         }}
                       >
-                        Edit
+                        {editingId === ev.id ? 'Cancel' : 'Edit'}
                       </button>
                       <button
-                        onClick={() => { console.log('Delete event', ev.id); setSelectedEventId(null); }}
+                        onClick={() => deleteEvent(ev.id)}
                         style={{
                           padding: '3px 10px',
                           fontSize: 11,

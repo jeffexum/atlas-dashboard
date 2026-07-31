@@ -625,12 +625,17 @@ async function _syncMail(): Promise<void> {
   const freshIds = new Set(comms.map((c) => c.id));
   const stillInWindow = new Set(inboxMessages.map((m) => m.id));
   const receivedById = new Map(inboxMessages.map((m) => [m.id, m.receivedDateTime ? new Date(m.receivedDateTime).getTime() : 0]));
+  const convById = new Map(inboxMessages.map((m) => [m.id, m.conversationId]));
   const carried = priorComms
-    .filter((c) =>
-      !c.id.startsWith('gm-')
-      && !freshIds.has(c.id)
-      && stillInWindow.has(c.id) // gone from the mailbox window (deleted/replied) → drop
-    )
+    .filter((c) => {
+      if (c.id.startsWith('gm-') || freshIds.has(c.id) || !stillInWindow.has(c.id)) return false;
+      // Replied since this arrived → resolved, drop from the inbox
+      const conv = convById.get(c.id);
+      const replied = conv ? lastReplyAt.get(conv) : undefined;
+      const receivedTs = c.receivedAt || receivedById.get(c.id) || 0;
+      if (replied && receivedTs && receivedTs <= replied) return false;
+      return true;
+    })
     .map((c) => c.receivedAt ? c : { ...c, receivedAt: receivedById.get(c.id) || 0 });
 
   const merged = [

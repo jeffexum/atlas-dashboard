@@ -91,9 +91,36 @@ async function _syncGmail(): Promise<void> {
     } catch { /* skip unfetchable */ }
   }
 
+  // Latest sent time per thread — a reply resolves everything received before it.
+  // format=minimal keeps these lookups cheap (id/threadId/internalDate only).
+  const lastReplyAt = new Map<string, number>();
+  try {
+    const sentList = await gmailGet<{ messages?: { id: string }[] }>(
+      `/messages?q=${encodeURIComponent('in:sent newer_than:30d')}&maxResults=100`
+    );
+    const sentIds = (sentList.messages || []).map((m) => m.id);
+    for (let i = 0; i < sentIds.length; i += 20) {
+      const chunk = await Promise.all(sentIds.slice(i, i + 20).map((id) =>
+        gmailGet<{ threadId?: string; internalDate?: string }>(`/messages/${id}?format=minimal`).catch(() => null)
+      ));
+      for (const m of chunk) {
+        if (!m?.threadId || !m.internalDate) continue;
+        const ts = parseInt(m.internalDate, 10);
+        if (ts > (lastReplyAt.get(m.threadId) || 0)) lastReplyAt.set(m.threadId, ts);
+      }
+    }
+  } catch (err) {
+    console.warn('[syncGmail] sent scan failed (reply filter skipped):', (err as Error).message);
+  }
+
   const candidates = messages.filter((m) => {
     const { email } = parseFrom(header(m, 'From'));
-    return !isAutomated(email, header(m, 'Subject'));
+    if (isAutomated(email, header(m, 'Subject'))) return false;
+    // Superseded by the user's own reply → resolved
+    const replied = m.threadId ? lastReplyAt.get(m.threadId) : undefined;
+    const receivedTs = m.internalDate ? parseInt(m.internalDate, 10) : 0;
+    if (replied && receivedTs && receivedTs <= replied) return false;
+    return true;
   });
 
   const alreadyTriaged = new Set(getState().triagedIds);
@@ -138,8 +165,16 @@ async function _syncGmail(): Promise<void> {
   const freshIds = new Set(comms.map((c) => c.id));
   const windowIds = new Set(messages.map((m) => `gm-${m.id}`));
   const receivedById = new Map(messages.map((m) => [`gm-${m.id}`, m.internalDate ? parseInt(m.internalDate, 10) : 0]));
+  const threadById = new Map(messages.map((m) => [`gm-${m.id}`, m.threadId]));
   const carried = st.comms
-    .filter((c) => c.id.startsWith('gm-') && !freshIds.has(c.id) && windowIds.has(c.id))
+    .filter((c) => {
+      if (!c.id.startsWith('gm-') || freshIds.has(c.id) || !windowIds.has(c.id)) return false;
+      const thread = threadById.get(c.id);
+      const replied = thread ? lastReplyAt.get(thread) : undefined;
+      const receivedTs = c.receivedAt || receivedById.get(c.id) || 0;
+      if (replied && receivedTs && receivedTs <= replied) return false;
+      return true;
+    })
     .map((c) => c.receivedAt ? c : { ...c, receivedAt: receivedById.get(c.id) || 0 });
   const merged = [
     ...outlookComms,

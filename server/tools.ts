@@ -385,6 +385,22 @@ export async function executeTool(name: string, input: Record<string, unknown>):
           const a = blockTitle.toLowerCase(); const b = evTitle.toLowerCase();
           return a.includes(b) || b.includes(a);
         };
+        // FIXED EVENTS ARE IMMOVABLE: a block that mirrors an existing calendar
+        // event is snapped to that event's real time and can never book — the
+        // plan may display meetings, but it cannot move or duplicate them.
+        const snapped: string[] = [];
+        for (const b of blocks) {
+          const ev = existing.find((e) => mirrors(b.title, e.title));
+          if (ev && (b.start !== ev.start || b.duration !== ev.duration || b.bookTo !== 'none')) {
+            if (b.start !== ev.start || b.duration !== ev.duration) {
+              snapped.push(`"${b.title}" snapped back to its scheduled time (${ev.start}h for ${ev.duration}h) — existing calendar events are fixed and cannot be moved by the plan`);
+            }
+            b.start = ev.start;
+            b.duration = ev.duration;
+            b.bookTo = 'none';
+          }
+        }
+        blocks.sort((a, b) => a.start - b.start);
         const conflicts: string[] = [];
         const fmt = (h: number) => `${Math.floor(h)}:${String(Math.round((h % 1) * 60)).padStart(2, '0')}`;
         for (const b of blocks) {
@@ -402,13 +418,15 @@ export async function executeTool(name: string, input: Record<string, unknown>):
           }
         }
         if (conflicts.length) {
-          return `REJECTED — the plan has ${conflicts.length} conflict(s), fix the times and call set_day_plan again:\n- ${conflicts.join('\n- ')}`;
+          const note = snapped.length ? `\nAlso note:\n- ${snapped.join('\n- ')}` : '';
+          return `REJECTED — the plan has ${conflicts.length} conflict(s), fix the times and call set_day_plan again:\n- ${conflicts.join('\n- ')}${note}`;
         }
 
         setState({ dayPlan: { date, status: 'draft', blocks, updatedAt: Date.now() } });
         await persistNow();
         const emails = blocks.filter((b) => b.kind === 'email').flatMap((b) => b.commIds || []).length;
-        return `Day plan ${prev && prev.date === date ? 'revised' : 'created'} for ${date}: ${blocks.length} blocks (${emails} emails queued in the email block). Status: draft — awaiting the user's confirmation.`;
+        const snapNote = snapped.length ? ` NOTE: ${snapped.join('; ')}.` : '';
+        return `Day plan ${prev && prev.date === date ? 'revised' : 'created'} for ${date}: ${blocks.length} blocks (${emails} emails queued in the email block). Status: draft — awaiting the user's confirmation.${snapNote}`;
       }
       case 'confirm_day_plan': {
         const plan = getState().dayPlan;

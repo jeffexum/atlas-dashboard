@@ -30,6 +30,7 @@ const FRONTEND_URL = process.env.FRONTEND_URL || (IS_PROD ? '' : '*');
 
 app.use(cors({ origin: FRONTEND_URL || false, credentials: true }));
 app.use(express.json({ limit: '2mb' }));
+app.use('/webhook/sms', express.urlencoded({ extended: false }));
 
 // ── API auth ──────────────────────────────────────────────────────────────────
 // Two accepted credentials:
@@ -1108,6 +1109,23 @@ app.post('/webhook/graph', (req: Request, res: Response) => {
   if (notifications.some((n) => n.clientState === GRAPH_CLIENT_STATE)) {
     onMailNotification();
   }
+});
+
+// ── SMS webhook (Twilio) ──────────────────────────────────────────────────────
+import { handleInboundSms, validateTwilioSignature, smsConfigured } from './sms.js';
+
+app.post('/webhook/sms', (req: Request, res: Response) => {
+  if (!smsConfigured()) { res.status(503).send('sms not configured'); return; }
+  const params = (req.body || {}) as Record<string, string>;
+  const url = `${process.env.WEBHOOK_URL || process.env.PUBLIC_API_URL || ''}/webhook/sms`;
+  const sig = req.headers['x-twilio-signature'];
+  if (typeof sig !== 'string' || !validateTwilioSignature(url, params, sig)) {
+    res.status(403).send('invalid signature');
+    return;
+  }
+  // Ack immediately (empty TwiML) — the reply goes out via the REST API
+  res.type('text/xml').send('<?xml version="1.0" encoding="UTF-8"?><Response></Response>');
+  handleInboundSms(params).catch((err) => console.error('[sms] handler error:', err));
 });
 
 // ── Telegram webhook ─────────────────────────────────────────────────────────

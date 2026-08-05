@@ -440,6 +440,7 @@ export async function executeTool(name: string, input: Record<string, unknown>):
         for (let i = 0; i < updatedBlocks.length; i++) {
           const b = updatedBlocks[i]!;
           if (b.bookTo !== 'work' && b.bookTo !== 'personal') continue;
+          if (b.bookedEventId) continue; // already booked on a prior confirm — never re-book
           try {
             const eventId = b.bookTo === 'work'
               ? await createOutlookEvent({ subject: b.title, startLocal: clock(b.start), endLocal: clock(b.start + b.duration), tz: USER.tz })

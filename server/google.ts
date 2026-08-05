@@ -305,8 +305,16 @@ export async function syncGoogleCalendar(): Promise<void> {
 
   // Merge: keep non-Google events, replace all gcal- events with fresh ones
   const s = getState();
-  const nonGoogle = s.calEvents.filter((e) => !e.id.startsWith('gcal-'));
-  setState({ calEvents: [...nonGoogle, ...calEvents] });
+  // Windowed reconciliation: Google is authoritative inside the fetched window;
+  // gcal- events beyond it (booked further out) and all non-Google events persist.
+  const windowEndTs = twoWeeks.getTime();
+  const evTs = (e: { year?: number; month?: number; date: number }) =>
+    new Date(e.year ?? now.getFullYear(), (e.month ?? now.getMonth() + 1) - 1, e.date).getTime();
+  const kept = s.calEvents.filter((e) => {
+    if (!e.id.startsWith('gcal-')) return true;
+    return evTs(e) > windowEndTs;
+  });
+  setState({ calEvents: [...kept, ...calEvents] });
   console.log(`[syncGoogleCalendar] ${calEvents.length} events synced`);
 }
 

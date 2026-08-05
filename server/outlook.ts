@@ -725,10 +725,20 @@ export async function syncCalendar(): Promise<void> {
     }];
   });
 
-  // Merge: keep Google (personal) events, replace only Outlook ones
+  // Windowed reconciliation: within the fetched window Outlook is the source of
+  // truth (external deletes/moves propagate); outside it, and for Google/manual
+  // events, keep what we have. Previously this wiped manual events every sync
+  // and dropped work events booked beyond the window.
   const st = getState();
-  const personal = st.calEvents.filter((e) => e.id.startsWith('gcal-'));
-  setState({ calEvents: [...personal, ...calEvents] });
+  const windowEndTs = end.getTime();
+  const evTs = (e: { year?: number; month?: number; date: number }) =>
+    new Date(e.year ?? now.getFullYear(), (e.month ?? now.getMonth() + 1) - 1, e.date).getTime();
+  const kept = st.calEvents.filter((e) => {
+    if (e.id.startsWith('gcal-')) return true;          // Google's sync owns these
+    if (e.source !== 'work') return true;                // manual/dashboard-only events persist
+    return evTs(e) > windowEndTs;                        // work events beyond the window persist
+  });
+  setState({ calEvents: [...kept, ...calEvents] });
 }
 
 

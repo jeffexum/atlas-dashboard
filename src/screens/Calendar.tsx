@@ -57,7 +57,6 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 export default function Calendar() {
   const calEvents = useStore((s) => s.calEvents);
   const calNote = useStore((s) => s.calNote);
-  const addCalEvent = useStore((s) => s.addCalEvent);
   const updateCalNote = useStore((s) => s.updateCalNote);
   const addTask = useStore((s) => s.addTask);
 
@@ -161,6 +160,8 @@ export default function Calendar() {
   const [newEventStart, setNewEventStart] = useState(9);
   const [newEventDuration, setNewEventDuration] = useState(1);
   const [newEventColor, setNewEventColor] = useState('var(--blue)');
+  const [newEventCalendar, setNewEventCalendar] = useState<'work' | 'personal' | 'none'>('work');
+  const [addingEvent, setAddingEvent] = useState(false);
 
   // Add todo form
   const [showAddTodo, setShowAddTodo] = useState(false);
@@ -253,20 +254,33 @@ export default function Calendar() {
     setAddEventOpen(true);
   }
 
-  function handleAddEvent() {
-    if (!newEventTitle.trim()) return;
-    addCalEvent({
-      title: newEventTitle.trim(),
-      start: newEventStart,
-      duration: newEventDuration,
-      color: newEventColor,
-      category: newEventCategory,
-      date: selectedDay,
-      month: viewMonth + 1,
-      year: viewYear,
-    } as Parameters<typeof addCalEvent>[0]);
-    setAddEventOpen(false);
-    setNewEventTitle('');
+  async function handleAddEvent() {
+    if (!newEventTitle.trim() || addingEvent) return;
+    setAddingEvent(true);
+    try {
+      const res = await fetch(`${API_URL}/api/calendar/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: newEventTitle.trim(),
+          start: newEventStart,
+          duration: newEventDuration,
+          color: newEventColor,
+          category: newEventCategory,
+          date: selectedDay,
+          month: viewMonth + 1,
+          year: viewYear,
+          calendar: newEventCalendar,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || `HTTP ${res.status}`);
+      setAddEventOpen(false);
+      setNewEventTitle('');
+    } catch (err) {
+      alert(`Couldn't create event: ${(err as Error).message}`);
+    } finally {
+      setAddingEvent(false);
+    }
   }
 
   function handleAddTodo() {
@@ -742,6 +756,18 @@ export default function Calendar() {
                     {['Work', 'Personal', 'Focus', 'Health'].map((c) => (
                       <option key={c} value={c}>{c}</option>
                     ))}
+                  </select>
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 10, color: 'var(--faint)', marginBottom: 3, fontFamily: 'JetBrains Mono, monospace', textTransform: 'uppercase' }}>Calendar</div>
+                  <select
+                    value={newEventCalendar}
+                    onChange={(e) => setNewEventCalendar(e.target.value as 'work' | 'personal' | 'none')}
+                    style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 3, padding: '4px 6px', fontSize: 12, fontFamily: 'inherit', color: 'var(--ink)', background: 'var(--bg)', outline: 'none' }}
+                  >
+                    <option value="work">Outlook (work)</option>
+                    <option value="personal">Gmail (personal)</option>
+                    <option value="none">Dashboard only</option>
                   </select>
                 </div>
                 <div style={{ flex: 1 }}>

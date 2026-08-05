@@ -8,8 +8,8 @@ import cors from 'cors';
 import { getState, setState, persistNow, addHabit, deleteHabit, toggleHabitToday, toggleHabitDate, recomputeAllHabits, dismissComm, snoozeComm, addShoppingItem, toggleShoppingItem, deleteShoppingItem, clearBoughtShoppingItems } from './state.js';
 import type { Comm } from './state.js';
 import { adlerProactiveCheck, generateBriefing, runPartnerAdler, runAdler } from './adler.js';
-import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, replyToEmail, fetchEmailBody, hasCalendarWrite, syncContacts, listOutlookAttachments, getOutlookAttachment, getOutlookThread, updateOutlookEvent, deleteOutlookEvent } from './outlook.js';
-import { getGoogleAuthUrl, exchangeGoogleCode, syncGoogleCalendar, isGoogleAuthenticated, loadGoogleToken, hasCalendarWriteScope, updateGoogleEvent, deleteGoogleEvent } from './google.js';
+import { getAuthUrl, exchangeCode, syncMail, syncCalendar, isAuthenticated, loadOutlookToken, learnUserProfile, sendEmail, replyToEmail, fetchEmailBody, hasCalendarWrite, syncContacts, listOutlookAttachments, getOutlookAttachment, getOutlookThread, updateOutlookEvent, deleteOutlookEvent, createOutlookEvent } from './outlook.js';
+import { getGoogleAuthUrl, exchangeGoogleCode, syncGoogleCalendar, isGoogleAuthenticated, loadGoogleToken, hasCalendarWriteScope, updateGoogleEvent, deleteGoogleEvent, createGoogleEvent } from './google.js';
 import { syncOura, isOuraConfigured } from './oura.js';
 import { isGmailConnected, syncGmail, replyGmail, fetchGmailBody, listGmailAttachments, getGmailAttachment, getGmailThread } from './gmail.js';
 import { suggestSlots, guessTimezone } from './schedule.js';
@@ -565,6 +565,45 @@ function wallClock(y: number, mo: number, d: number, hourFloat: number): string 
   const min = Math.round((hourFloat - h) * 60);
   return `${y}-${pad2(mo)}-${pad2(d)}T${pad2(h)}:${pad2(min)}:00`;
 }
+
+app.post('/api/calendar/events', async (req: Request, res: Response) => {
+  const { title, year, month, date, start, duration, calendar, color, category } = (req.body || {}) as {
+    title?: string; year?: number; month?: number; date?: number;
+    start?: number; duration?: number; calendar?: 'work' | 'personal' | 'none';
+    color?: string; category?: string;
+  };
+  if (!title?.trim() || !year || !month || !date || typeof start !== 'number' || typeof duration !== 'number') {
+    res.status(400).json({ error: 'title, year, month, date, start, duration required' });
+    return;
+  }
+  const startLocal = wallClock(year, month, date, start);
+  const endLocal = wallClock(year, month, date, start + duration);
+  try {
+    let id = `ev-${Date.now()}`;
+    let source: 'work' | 'personal' | undefined;
+    if (calendar === 'work') {
+      if (!hasCalendarWrite()) { res.status(400).json({ error: 'Outlook calendar write not authorized — re-connect Outlook' }); return; }
+      id = await createOutlookEvent({ subject: title.trim(), startLocal, endLocal, tz: USER.tz });
+      source = 'work';
+    } else if (calendar === 'personal') {
+      if (!hasCalendarWriteScope()) { res.status(400).json({ error: 'Google calendar write not authorized — re-connect Google' }); return; }
+      id = `gcal-${await createGoogleEvent({ summary: title.trim(), startLocal, endLocal, tz: USER.tz })}`;
+      source = 'personal';
+    }
+    setState({
+      calEvents: [...getState().calEvents, {
+        id, title: title.trim(), start, duration,
+        color: color || 'var(--blue)', category: category || 'Work',
+        date, month, year, ...(source ? { source } : {}),
+      }],
+    });
+    await persistNow();
+    res.json({ ok: true, id });
+  } catch (err) {
+    console.error('Calendar create error:', err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
 
 app.put('/api/calendar/events/:id', async (req: Request, res: Response) => {
   const id = String(req.params.id);
